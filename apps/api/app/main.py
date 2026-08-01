@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.database.database import create_db
-from app.routers import health
+from app.routers import health, chat
 
 
 app = FastAPI(
@@ -30,6 +30,12 @@ app.include_router(
     health.router,
     prefix="/health",
     tags=["Health"]
+)
+
+app.include_router(
+    chat.router,
+    prefix="/api/chat",
+    tags=["Chat"]
 )
 
 
