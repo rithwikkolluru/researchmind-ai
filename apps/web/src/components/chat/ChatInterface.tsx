@@ -32,6 +32,7 @@ export default function VaaniInterface() {
     voiceState,
     isSupported,
     isCallMode,
+    micLevel,
     startListening,
     stopListening,
     startCall,
@@ -233,6 +234,7 @@ export default function VaaniInterface() {
             voiceState={voiceState}
             isSupported={isSupported}
             isCallMode={isCallMode}
+            micLevel={micLevel}
             onPress={startListening}
             onRelease={stopListening}
             onStartCall={startCall}
