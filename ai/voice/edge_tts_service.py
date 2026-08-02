@@ -44,7 +44,7 @@ class EdgeTTSService(TTSInterface):
     def __init__(self, default_voice: str = "default"):
         self._default_voice = VOICE_MAP.get(default_voice, VOICE_MAP["default"])
 
-    def synthesize(self, text: str, language: str = "en", voice_id: str = "default") -> bytes:
+    async def synthesize(self, text: str, language: str = "en", voice_id: str = "default") -> bytes:
         """Synthesize text to MP3 bytes using edge-tts neural voices."""
         try:
             import edge_tts  # lazy import so the app starts even if edge-tts isn't installed
@@ -58,9 +58,9 @@ class EdgeTTSService(TTSInterface):
 
         voice = VOICE_MAP.get(voice_id, self._default_voice)
 
-        # edge-tts is async-native; run it in a fresh event loop
+        # edge-tts is async-native; await it directly
         try:
-            audio_bytes = asyncio.run(self._synthesize_async(text, voice))
+            audio_bytes = await self._synthesize_async(text, voice)
             return audio_bytes
         except Exception as exc:
             logger.error("EdgeTTS synthesis failed: %s", exc)
