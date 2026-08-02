@@ -7,6 +7,7 @@ This router handles:
 
 WebSocket protocol (JSON messages):
   Client → Server:
+    { "type": "start_call", "language": "English" }
     { "type": "transcript", "text": "...", "level": "btech", "language": "English" }
     { "type": "ping" }
 
@@ -83,8 +84,38 @@ async def voice_websocket(websocket: WebSocket, session_id: str):
                 await websocket.send_text(json.dumps({"type": "pong"}))
                 continue
 
+            if msg_type == "start_call":
+                # Triggered when user presses "Call Mentor" — send an initial greeting
+                language = message.get("language", "English")
+                greeting = (
+                    "Hello! I am Vaani, your AI research mentor. "
+                    "I'm here to help with your studies and research journey. "
+                    "Can I know what your doubt or queries are about?"
+                )
+                _memory_service.add_message(session_id, "assistant", greeting)
+                await websocket.send_text(json.dumps({
+                    "type": "response",
+                    "text": greeting,
+                }))
+                try:
+                    audio_bytes = await _tts_service.synthesize(
+                        text=greeting,
+                        language=language[:2].lower(),
+                        voice_id="default",
+                    )
+                    audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+                    await websocket.send_text(json.dumps({
+                        "type": "audio",
+                        "data": audio_b64,
+                        "mime_type": "audio/mpeg",
+                    }))
+                except TTSException as tts_err:
+                    logger.warning("TTS failed for greeting: %s", tts_err)
+                continue
+
             if msg_type == "transcript":
                 transcript = message.get("text", "").strip()
+                logger.info("WebSocket received transcript: %s", transcript)
                 level = message.get("level", "btech")
                 language = message.get("language", "English")
 
@@ -114,7 +145,7 @@ async def voice_websocket(websocket: WebSocket, session_id: str):
 
                 # Synthesize TTS and send audio
                 try:
-                    audio_bytes = _tts_service.synthesize(
+                    audio_bytes = await _tts_service.synthesize(
                         text=response_text,
                         language=language[:2].lower(),
                         voice_id="default",
@@ -152,7 +183,7 @@ async def synthesize_tts(request: TTSRequest):
     without going through the WebSocket path.
     """
     try:
-        audio_bytes = _tts_service.synthesize(
+        audio_bytes = await _tts_service.synthesize(
             text=request.text,
             language=request.language,
             voice_id=request.voice_id,
