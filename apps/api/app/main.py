@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.database.database import create_db
-from app.routers import health, chat, voice
+from app.routers import health, chat, voice, fun
 
 
 app = FastAPI(
@@ -45,6 +45,12 @@ app.include_router(
     voice.router,
     prefix="/api/voice",
     tags=["Voice"]
+)
+
+app.include_router(
+    fun.router,
+    prefix="/api/fun",
+    tags=["Fun Zone"]
 )
 
 
