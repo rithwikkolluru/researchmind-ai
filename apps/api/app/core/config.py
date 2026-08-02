@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./researchmind.db"
 
     GEMINI_API_KEY: str = ""
+    LLM_PROVIDER: str = "groq"
+    GROQ_API_KEY: str = ""
 
     SECRET_KEY: str = "researchmind_secret"
 
@@ -20,6 +22,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 settings = Settings()
