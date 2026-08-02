@@ -12,7 +12,8 @@ async def chat_endpoint(request: ChatRequest):
         response = process_chat_message(
             session_id=request.session_id,
             message=request.message,
-            language=request.language
+            language=request.language,
+            level=request.level,
         )
         return response
     except Exception as e:

@@ -1,24 +1,45 @@
-import { create } from 'zustand';
+import { create } from "zustand";
+
+export type StudentLevel = "btech" | "mtech" | "phd";
+export type Language = "English" | "Hindi" | "Telugu";
 
 export type Message = {
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
+  timestamp?: number;
 };
 
 interface ChatState {
   messages: Message[];
   sessionId: string;
   isTyping: boolean;
-  addMessage: (message: Message) => void;
+  level: StudentLevel;
+  language: Language;
+
+  addMessage: (message: Omit<Message, "timestamp">) => void;
   setTyping: (typing: boolean) => void;
-  setSessionId: (id: string) => void;
+  setLevel: (level: StudentLevel) => void;
+  setLanguage: (language: Language) => void;
+  clearMessages: () => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
   messages: [],
-  sessionId: Math.random().toString(36).substring(7),
+  sessionId: `session-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
   isTyping: false,
-  addMessage: (message) => set((state) => ({ messages: [...state.messages, message] })),
+  level: "btech",
+  language: "English",
+
+  addMessage: (message) =>
+    set((state) => ({
+      messages: [
+        ...state.messages,
+        { ...message, timestamp: Date.now() },
+      ],
+    })),
+
   setTyping: (typing) => set({ isTyping: typing }),
-  setSessionId: (id) => set({ sessionId: id }),
+  setLevel: (level) => set({ level }),
+  setLanguage: (language) => set({ language }),
+  clearMessages: () => set({ messages: [] }),
 }));
