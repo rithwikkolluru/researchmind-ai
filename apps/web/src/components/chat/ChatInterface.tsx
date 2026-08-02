@@ -19,11 +19,12 @@
  */
 
 import React, { useRef, useEffect, useState } from "react";
+import Link from "next/link";
 import { useChatStore } from "@/store/useChatStore";
 import { useVoice } from "@/hooks/useVoice";
 import VoiceOrb from "@/components/voice/VoiceOrb";
 import LevelSelector from "@/components/voice/LevelSelector";
-import { Send, Trash2, BookOpen } from "lucide-react";
+import { Send, Trash2, BookOpen, Sparkles } from "lucide-react";
 
 export default function VaaniInterface() {
   const { messages, addMessage, setTyping, isTyping, sessionId, level, language, clearMessages } =
@@ -118,6 +119,14 @@ export default function VaaniInterface() {
         </div>
 
         <div className="flex items-center gap-3">
+          <Link
+            href="/fun"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:scale-105"
+            style={{ background: "linear-gradient(135deg,#a855f7,#ec4899)", boxShadow: "0 0 12px rgba(168,85,247,0.3)" }}
+          >
+            <Sparkles className="w-3 h-3" />
+            Fun Zone
+          </Link>
           <LevelSelector />
           {messages.length > 0 && (
             <button
