@@ -28,7 +28,16 @@ import { Send, Trash2, BookOpen } from "lucide-react";
 export default function VaaniInterface() {
   const { messages, addMessage, setTyping, isTyping, sessionId, level, language, clearMessages } =
     useChatStore();
-  const { voiceState, isSupported, startListening, stopListening, errorMessage } = useVoice();
+  const {
+    voiceState,
+    isSupported,
+    isCallMode,
+    startListening,
+    stopListening,
+    startCall,
+    endCall,
+    errorMessage,
+  } = useVoice();
 
   const [textInput, setTextInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -223,8 +232,11 @@ export default function VaaniInterface() {
           <VoiceOrb
             voiceState={voiceState}
             isSupported={isSupported}
+            isCallMode={isCallMode}
             onPress={startListening}
             onRelease={stopListening}
+            onStartCall={startCall}
+            onEndCall={endCall}
           />
 
           {/* Divider */}

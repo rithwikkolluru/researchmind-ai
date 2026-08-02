@@ -3,16 +3,16 @@
 /**
  * useVoice — Custom hook managing the complete voice pipeline.
  *
- * Responsibilities:
- *  - Browser SpeechRecognition (STT) — capture and transcribe mic input
- *  - WebSocket connection to /api/voice/ws/{sessionId} — send transcripts, receive responses
- *  - Audio playback — decode base64 MP3 and play via AudioContext
- *  - Voice state machine: idle → listening → thinking → speaking → idle
+ * Supports two modes:
+ *  1. Push-to-Talk (Walkie-Talkie): Press to speak, release to send.
+ *  2. Phone Call Mode (Hands-free): Microphone stays open, detects end of utterance,
+ *     plays AI voice response, and automatically resumes listening when done.
  *
- * Why a custom hook (not a library)?
- *  The Web Speech API and AudioContext have complex lifecycle requirements
- *  that are easier to control precisely in a focused hook than via a
- *  generic third-party wrapper.
+ * Responsibilities:
+ *  - Browser SpeechRecognition (STT) — capture and transcribe mic input.
+ *  - WebSocket connection to /api/voice/ws/{sessionId} — send transcripts, receive responses.
+ *  - Audio playback — decode base64 MP3 and play via AudioContext.
+ *  - Voice state machine: idle → listening → thinking → speaking → error
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -23,8 +23,11 @@ export type VoiceState = "idle" | "listening" | "thinking" | "speaking" | "error
 interface UseVoiceReturn {
   voiceState: VoiceState;
   isSupported: boolean;
+  isCallMode: boolean;
   startListening: () => void;
   stopListening: () => void;
+  startCall: () => void;
+  endCall: () => void;
   errorMessage: string | null;
 }
 
@@ -32,20 +35,35 @@ export function useVoice(): UseVoiceReturn {
   const { addMessage, sessionId, level, language } = useChatStore();
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [isSupported, setIsSupported] = useState(false);
+  const [isCallMode, setIsCallMode] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  
+  // Keep refs for active state tracking to avoid closures in event listeners
+  const isCallModeRef = useRef(false);
+  const voiceStateRef = useRef<VoiceState>("idle");
+  const activeAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
-  // Check browser support on mount
+  // Sync refs with states
+  useEffect(() => {
+    isCallModeRef.current = isCallMode;
+  }, [isCallMode]);
+
+  useEffect(() => {
+    voiceStateRef.current = voiceState;
+  }, [voiceState]);
+
+  // Check browser SpeechRecognition support on mount
   useEffect(() => {
     const SpeechRecognition =
       window.SpeechRecognition || (window as typeof window & { webkitSpeechRecognition: typeof window.SpeechRecognition }).webkitSpeechRecognition;
     setIsSupported(!!SpeechRecognition);
   }, []);
 
-  // Connect WebSocket once on mount
+  // Connect and manage WebSocket connection
   useEffect(() => {
     const wsUrl = `ws://localhost:8000/api/voice/ws/${sessionId}`;
     const ws = new WebSocket(wsUrl);
@@ -69,15 +87,29 @@ export function useVoice(): UseVoiceReturn {
 
         if (msg.type === "audio") {
           setVoiceState("speaking");
+          // Stop any active recognition before speaking to prevent feedback
+          if (recognitionRef.current) {
+            try {
+              recognitionRef.current.abort();
+            } catch (e) {}
+          }
           await playBase64Audio(msg.data);
+          
           setVoiceState("idle");
+          // If in Call Mode, automatically resume listening after speaking completes
+          if (isCallModeRef.current) {
+            triggerNextListen();
+          }
         }
 
         if (msg.type === "error") {
-          console.error("[Voice] Server error:", msg.message);
+          console.warn("[Voice] Server error:", msg.message);
           setErrorMessage(msg.message);
           setVoiceState("error");
-          setTimeout(() => setVoiceState("idle"), 3000);
+          setTimeout(() => {
+            setVoiceState("idle");
+            if (isCallModeRef.current) triggerNextListen();
+          }, 3000);
         }
       } catch (err) {
         console.error("[Voice] Failed to parse WebSocket message:", err);
@@ -98,6 +130,7 @@ export function useVoice(): UseVoiceReturn {
     };
   }, [sessionId, addMessage]);
 
+  // Decode and play incoming audio bytes
   const playBase64Audio = async (base64Data: string): Promise<void> => {
     try {
       if (!audioContextRef.current || audioContextRef.current.state === "closed") {
@@ -115,9 +148,13 @@ export function useVoice(): UseVoiceReturn {
       const source = ctx.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(ctx.destination);
+      activeAudioSourceRef.current = source;
 
       return new Promise((resolve) => {
-        source.onended = () => resolve();
+        source.onended = () => {
+          activeAudioSourceRef.current = null;
+          resolve();
+        };
         source.start(0);
       });
     } catch (err) {
@@ -125,14 +162,19 @@ export function useVoice(): UseVoiceReturn {
     }
   };
 
-  const startListening = useCallback(() => {
-    if (!isSupported) {
-      setErrorMessage("Voice is not supported in this browser. Try Chrome or Edge.");
+  // Safe wrapper to start listening
+  const triggerNextListen = useCallback(() => {
+    if (!isSupported) return;
+    // Don't listen if we are currently thinking or speaking
+    if (voiceStateRef.current === "thinking" || voiceStateRef.current === "speaking") {
       return;
     }
-    if (voiceState !== "idle") return;
 
-    setErrorMessage(null);
+    try {
+      if (recognitionRef.current) {
+        recognitionRef.current.abort();
+      }
+    } catch (e) {}
 
     const SpeechRecognition =
       window.SpeechRecognition || (window as typeof window & { webkitSpeechRecognition: typeof window.SpeechRecognition }).webkitSpeechRecognition;
@@ -143,7 +185,9 @@ export function useVoice(): UseVoiceReturn {
     recognition.maxAlternatives = 1;
     recognitionRef.current = recognition;
 
-    recognition.onstart = () => setVoiceState("listening");
+    recognition.onstart = () => {
+      setVoiceState("listening");
+    };
 
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript.trim();
@@ -160,17 +204,20 @@ export function useVoice(): UseVoiceReturn {
             language: language,
           })
         );
+        setVoiceState("thinking");
       } else {
-        setErrorMessage("Lost connection to voice server. Please refresh.");
+        setErrorMessage("Lost connection to voice server.");
         setVoiceState("error");
       }
     };
 
     recognition.onerror = (event) => {
-      console.error("[Voice] SpeechRecognition error:", event.error);
+      // Use console.warn instead of console.error for "no-speech" to prevent Next.js overlay triggers
       if (event.error === "no-speech") {
-        setVoiceState("idle"); // Silent — not an error worth displaying
+        console.warn("[Voice] SpeechRecognition status: no speech detected.");
+        setVoiceState("idle");
       } else {
+        console.warn("[Voice] SpeechRecognition error:", event.error);
         setErrorMessage(`Microphone error: ${event.error}`);
         setVoiceState("error");
         setTimeout(() => setVoiceState("idle"), 3000);
@@ -178,16 +225,93 @@ export function useVoice(): UseVoiceReturn {
     };
 
     recognition.onend = () => {
-      if (voiceState === "listening") setVoiceState("idle");
+      // If we are in Call Mode, still idle, and recognition stops naturally, restart it
+      if (isCallModeRef.current && voiceStateRef.current === "listening") {
+        setVoiceState("idle");
+        // Delay slightly to prevent rapid cycling loops
+        setTimeout(() => {
+          if (isCallModeRef.current && voiceStateRef.current === "idle") {
+            triggerNextListen();
+          }
+        }, 300);
+      } else if (!isCallModeRef.current && voiceStateRef.current === "listening") {
+        setVoiceState("idle");
+      }
     };
 
-    recognition.start();
-  }, [isSupported, voiceState, language, level, addMessage]);
+    try {
+      recognition.start();
+    } catch (e) {
+      console.warn("[Voice] Start error:", e);
+    }
+  }, [isSupported, language, level, addMessage]);
+
+  // Walkie-Talkie actions
+  const startListening = useCallback(() => {
+    if (isCallMode) return;
+    setErrorMessage(null);
+    triggerNextListen();
+  }, [isCallMode, triggerNextListen]);
 
   const stopListening = useCallback(() => {
-    recognitionRef.current?.stop();
+    if (isCallMode) return;
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+    }
     setVoiceState("idle");
+  }, [isCallMode]);
+
+  // Phone Call Mode actions
+  const startCall = useCallback(() => {
+    setIsCallMode(true);
+    setErrorMessage(null);
+    // Let's start the listening loop
+    setTimeout(() => {
+      triggerNextListen();
+    }, 100);
+  }, [triggerNextListen]);
+
+  const endCall = useCallback(() => {
+    setIsCallMode(false);
+    setVoiceState("idle");
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (e) {}
+    }
+    if (activeAudioSourceRef.current) {
+      try {
+        activeAudioSourceRef.current.stop();
+      } catch (e) {}
+    }
   }, []);
 
-  return { voiceState, isSupported, startListening, stopListening, errorMessage };
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {}
+      }
+      if (activeAudioSourceRef.current) {
+        try {
+          activeAudioSourceRef.current.stop();
+        } catch (e) {}
+      }
+    };
+  }, []);
+
+  return {
+    voiceState,
+    isSupported,
+    isCallMode,
+    startListening,
+    stopListening,
+    startCall,
+    endCall,
+    errorMessage,
+  };
 }
