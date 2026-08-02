@@ -22,7 +22,7 @@ class TTSException(Exception):
 
 class TTSInterface(ABC):
     @abstractmethod
-    def synthesize(self, text: str, language: str = "en", voice_id: str = "default") -> bytes:
+    async def synthesize(self, text: str, language: str = "en", voice_id: str = "default") -> bytes:
         """
         Convert text to audio bytes.
 
