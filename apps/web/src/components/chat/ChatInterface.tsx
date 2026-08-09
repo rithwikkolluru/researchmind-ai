@@ -427,7 +427,7 @@ export default function VaaniInterface() {
             <div className="max-w-3xl mx-auto px-4 py-6 flex flex-col items-center gap-5">
               <VoiceOrb
                 voiceState={voiceState} isSupported={isSupported} isCallMode={isCallMode}
-                micLevel={micLevel} onPress={startListening} onRelease={stopListening}
+                onPress={startListening} onRelease={stopListening}
                 onStartCall={startCall} onEndCall={endCall}
               />
               <div className="flex items-center gap-3 w-full">
