@@ -1,19 +1,11 @@
 "use client";
 
-/**
- * LevelSelector — One-click academic level switcher.
- *
- * Per design spec: visible and one-click changeable, not buried in settings.
- * Immediately updates the Zustand store so all subsequent voice/text turns
- * use the new level's persona.
- */
-
 import { useChatStore, StudentLevel } from "@/store/useChatStore";
 
-const LEVELS: { value: StudentLevel; label: string; desc: string }[] = [
-  { value: "btech", label: "B.Tech", desc: "Intuition-first, friendly" },
-  { value: "mtech", label: "M.Tech", desc: "Balanced rigor" },
-  { value: "phd", label: "PhD", desc: "Research-peer mode" },
+const LEVELS: { value: StudentLevel; label: string; desc: string; activeClass: string }[] = [
+  { value: "btech", label: "B.Tech", desc: "Intuition-first, friendly",   activeClass: "bg-cyan-600 shadow-cyan-500/30 text-white" },
+  { value: "mtech", label: "M.Tech", desc: "Balanced rigor",              activeClass: "bg-indigo-600 shadow-indigo-500/30 text-white" },
+  { value: "phd",   label: "PhD",    desc: "Research-peer mode",          activeClass: "bg-emerald-700 shadow-emerald-500/30 text-white" },
 ];
 
 export default function LevelSelector() {
@@ -29,7 +21,7 @@ export default function LevelSelector() {
           className={`
             px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200
             ${level === l.value
-              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/30"
+              ? `${l.activeClass} shadow-lg`
               : "text-gray-400 hover:text-gray-200 hover:bg-white/5"
             }
           `}
