@@ -47,7 +47,7 @@ export function useVoice(): UseVoiceReturn {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [micLevel, setMicLevel] = useState(0);
 
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -79,7 +79,7 @@ export function useVoice(): UseVoiceReturn {
   // Check browser SpeechRecognition support on mount
   useEffect(() => {
     const SpeechRecognition =
-      window.SpeechRecognition || (window as typeof window & { webkitSpeechRecognition: typeof window.SpeechRecognition }).webkitSpeechRecognition;
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     setIsSupported(!!SpeechRecognition);
   }, []);
 
@@ -296,7 +296,7 @@ export function useVoice(): UseVoiceReturn {
     } catch (e) {}
 
     const SpeechRecognition =
-      window.SpeechRecognition || (window as typeof window & { webkitSpeechRecognition: typeof window.SpeechRecognition }).webkitSpeechRecognition;
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     const recognition = new SpeechRecognition();
 
@@ -320,7 +320,7 @@ export function useVoice(): UseVoiceReturn {
       }
     };
 
-    recognition.onresult = (event) => {
+    recognition.onresult = (event: any) => {
       if (isCallModeRef.current) {
         let interimTranscript = "";
         let finalTranscript = "";
@@ -364,7 +364,7 @@ export function useVoice(): UseVoiceReturn {
       }
     };
 
-    recognition.onerror = (event) => {
+    recognition.onerror = (event: any) => {
       if (event.error === "no-speech") {
         console.warn("[Voice] SpeechRecognition status: no speech detected.");
         if (voiceStateRef.current !== "speaking") {
