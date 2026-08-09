@@ -16,6 +16,8 @@ async def chat_endpoint(request: ChatRequest):
             message=request.message,
             language=request.language,
             level=request.level,
+            mode=request.mode,
+            enable_quality_tracker=request.enable_quality_tracker,
         )
         return response
     except Exception as e:

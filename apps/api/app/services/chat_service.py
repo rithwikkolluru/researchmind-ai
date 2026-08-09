@@ -16,12 +16,16 @@ def process_chat_message(
     message: str,
     language: str,
     level: str = "btech",
+    mode: str = "default",
+    enable_quality_tracker: bool = False,
 ) -> ChatResponse:
     response_text = mentor_agent.generate_response(
         session_id=session_id,
         user_message=message,
         level=level,
         language=language,
+        mode=mode,
+        enable_quality_tracker=enable_quality_tracker,
     )
     history = memory_service.get_conversation_history(session_id)
     return ChatResponse(
