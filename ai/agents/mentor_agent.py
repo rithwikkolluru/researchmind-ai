@@ -55,6 +55,8 @@ class MentorAgent:
         user_message: str,
         level: StudentLevel = "btech",
         language: str = "English",
+        mode: str = "default",
+        enable_quality_tracker: bool = False,
     ) -> str:
         """
         Generate a mentor response for the given student message.
@@ -78,7 +80,7 @@ class MentorAgent:
         # Generate response via LLM
         try:
             response_text = self._call_llm(
-                system_prompt=get_system_prompt(level, language),
+                system_prompt=get_system_prompt(level, language, mode, enable_quality_tracker),
                 history=recent_history,
                 user_message=user_message,
             )
