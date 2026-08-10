@@ -1,4 +1,4 @@
-# ResearchMind AI — Vaani 🎓
+# ResearchMind AI — Vaani 
 
 **Your AI Research Mentor. Like a phone call with a professor.**
 
@@ -6,19 +6,19 @@ Vaani is a voice-first AI mentor built for B.Tech, M.Tech, and PhD students navi
 
 ---
 
-## ✨ Features
+##  Features
 
-- 📞 **Phone Call Mode** — Hands-free, continuous voice conversation with your AI mentor
-- 🧠 **Level-Calibrated Responses** — Tailored explanations for B.Tech, M.Tech, and PhD levels
-- 🗣️ **Neural Text-to-Speech** — High-quality Microsoft Edge neural voices (free, no API key needed)
-- 🔇 **Smart Silence Detection** — Automatically detects when you stop speaking and responds
-- 🎤 **Duplex Interruption** — Interrupt the AI mid-sentence just like a real phone call
-- 📄 **Document Mode** — Upload research papers and discuss them via text chat
-- 🌐 **Multi-language** — English, Hindi, Telugu support
+-  **Phone Call Mode** — Hands-free, continuous voice conversation with your AI mentor
+-  **Level-Calibrated Responses** — Tailored explanations for B.Tech, M.Tech, and PhD levels
+-  **Neural Text-to-Speech** — High-quality Microsoft Edge neural voices (free, no API key needed)
+-  **Smart Silence Detection** — Automatically detects when you stop speaking and responds
+-  **Duplex Interruption** — Interrupt the AI mid-sentence just like a real phone call
+-  **Document Mode** — Upload research papers and discuss them via text chat
+-  **Multi-language** — English, Hindi, Telugu support
 
 ---
 
-## 🚀 Quick Setup (New Laptop)
+##  Quick Setup (New Laptop)
 
 ### Prerequisites
 - Python 3.11+
@@ -73,7 +73,7 @@ Go to http://localhost:3000 in Chrome or Edge (required for Web Speech API).
 
 ---
 
-## 🏗️ Project Structure
+##  Project Structure
 
 ```
 researchmind-ai/
@@ -103,24 +103,24 @@ researchmind-ai/
 
 ---
 
-## 🔑 API Keys Required
+##  API Keys Required
 
 | Service | Required | Where to Get |
 |---------|----------|--------------|
-| Groq (LLaMA 3.3 70B) | ✅ Yes (for real AI) | https://console.groq.com |
+| Groq (LLaMA 3.3 70B) |  Yes (for real AI) | https://console.groq.com |
 | Gemini | Optional | https://aistudio.google.com |
 | ElevenLabs | Optional | https://elevenlabs.io |
-| Edge TTS (voice) | ❌ None needed | Built-in, completely free |
+| Edge TTS (voice) | None needed | Built-in, completely free |
 
 ---
 
-## 🧪 Test Without API Keys
+##  Test Without API Keys
 
 Set `LLM_PROVIDER=mock` in `.env` to use a mock AI that echoes responses — useful for testing the voice pipeline without any API key.
 
 ---
 
-## 📞 How to Use Call Mode
+## How to Use Call Mode
 
 1. Open http://localhost:3000 in **Chrome or Edge** (required)
 2. Click **"Call Mentor"** — allow microphone access when prompted
@@ -132,7 +132,7 @@ Set `LLM_PROVIDER=mock` in `.env` to use a mock AI that echoes responses — use
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Frontend:** Next.js 16, TypeScript, Web Speech API, Web Audio API
 - **Backend:** FastAPI, Python 3.11, WebSockets
