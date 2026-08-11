@@ -14,14 +14,18 @@ Vaani is a voice-first AI mentor built for B.Tech, M.Tech, and PhD students navi
 ### Tech Stack & Tools
 
 * **CI/CD Engine:** Jenkins (Declarative Pipeline)
+
 * **Trigger Mechanism:** GitHub Webhooks exposed locally via `ngrok` HTTPS tunnel
+
 * **Containerization:** Docker (Multi-service build: FastAPI API & Next.js Web App)
+
 * **Orchestration:** Kubernetes via `kind` (*Kubernetes in Docker*) cluster
+
 * **Secret Management:** Jenkins Encrypted Credentials Manager (`groq-api-key`)
 
 ---
 
-### 🔄 CI/CD Pipeline Workflow
+###  CI/CD Pipeline Workflow
 
 When code is pushed to `main`, GitHub notifies the local Jenkins instance via an `ngrok` reverse proxy webhook, executing the following 5-stage automated pipeline:
 
