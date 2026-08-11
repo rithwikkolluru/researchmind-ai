@@ -2,6 +2,8 @@ pipeline {
     agent any
 
     environment {
+        // Includes system binary paths so Jenkins can locate brew, docker, kubectl, node, and python
+        PATH                  = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${env.PATH}"
         GROQ_API_KEY          = credentials('groq-api-key')
         DOCKER_IMAGE_BACKEND  = "researchmind-backend"
         DOCKER_IMAGE_FRONTEND = "researchmind-frontend"
