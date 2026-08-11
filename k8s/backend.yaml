@@ -14,7 +14,6 @@ spec:
       labels:
         app: researchmind-backend
     spec:
-    spec:
       containers:
         - name: backend
           image: researchmind-backend:latest
@@ -38,7 +37,7 @@ spec:
               cpu: "500m"
           readinessProbe:
             httpGet:
-              path: /health
+              path: /
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 5
