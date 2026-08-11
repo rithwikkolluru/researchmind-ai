@@ -17,6 +17,7 @@ spec:
       containers:
         - name: frontend
           image: researchmind-frontend:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
           env:

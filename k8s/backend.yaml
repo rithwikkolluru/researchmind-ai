@@ -14,9 +14,11 @@ spec:
       labels:
         app: researchmind-backend
     spec:
+    spec:
       containers:
         - name: backend
           image: researchmind-backend:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
           env:
