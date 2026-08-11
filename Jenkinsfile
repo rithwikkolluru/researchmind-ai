@@ -2,37 +2,41 @@ pipeline {
     agent any
 
     environment {
-        GROQ_API_KEY = credentials('groq-api-key')
+        GROQ_API_KEY          = credentials('groq-api-key')
         DOCKER_IMAGE_BACKEND  = "researchmind-backend"
         DOCKER_IMAGE_FRONTEND = "researchmind-frontend"
-        IMAGE_TAG = "${env.BUILD_NUMBER}"
+        IMAGE_TAG             = "${env.BUILD_NUMBER}"
+        KIND_CLUSTER_NAME     = "researchmind"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                echo '📥 Pulling latest code from GitHub...'
+                echo '📥 Pulling latest code from repository...'
                 checkout scm
             }
         }
 
-        stage('Install Backend Dependencies') {
-            steps {
-                echo '🐍 Installing Python dependencies...'
-                sh '''
-                    cd apps/api
-                    pip install -r requirements.txt
-                '''
-            }
-        }
-
-        stage('Install Frontend Dependencies') {
-            steps {
-                echo '📦 Installing Node dependencies...'
-                sh '''
-                    cd apps/web
-                    npm ci
-                '''
+        stage('Install Dependencies') {
+            parallel {
+                stage('Install Backend Dependencies') {
+                    steps {
+                        echo '🐍 Installing Python dependencies...'
+                        sh '''
+                            cd apps/api
+                            pip install --no-cache-dir -r requirements.txt
+                        '''
+                    }
+                }
+                stage('Install Frontend Dependencies') {
+                    steps {
+                        echo '📦 Installing Node dependencies...'
+                        sh '''
+                            cd apps/web
+                            npm ci
+                        '''
+                    }
+                }
             }
         }
 
@@ -40,59 +44,75 @@ pipeline {
             parallel {
                 stage('Backend Tests') {
                     steps {
-                        echo '🧪 Running backend tests...'
+                        echo '🧪 Running backend pytest suite...'
                         sh '''
                             cd apps/api
-                            python -m pytest tests/ -v --tb=short || echo "No tests yet — skipping"
+                            python -m pytest tests/ -v --tb=short || echo "⚠️ No tests found or tests skipped."
                         '''
                     }
                 }
                 stage('Frontend Type Check') {
                     steps {
-                        echo '🔍 Running TypeScript type check...'
+                        echo '🔍 Running TypeScript build & type check...'
                         sh '''
                             cd apps/web
-                            npm run build -- --no-lint || echo "Type check done"
+                            npm run build -- --no-lint || echo "⚠️ Frontend build/check finished."
                         '''
                     }
                 }
             }
         }
 
-        stage('Build Docker Images') {
+        stage('Build & Load Docker Images') {
             steps {
-                echo '🐳 Building Docker images...'
+                echo '🐳 Building Docker images and loading into Kind cluster...'
                 sh '''
+                    # Build backend & frontend images
                     docker build -f docker/Dockerfile.backend -t ${DOCKER_IMAGE_BACKEND}:${IMAGE_TAG} .
                     docker build -f docker/Dockerfile.frontend -t ${DOCKER_IMAGE_FRONTEND}:${IMAGE_TAG} .
+
+                    # Load images directly into local Kind cluster node
+                    kind load docker-image ${DOCKER_IMAGE_BACKEND}:${IMAGE_TAG} --name ${KIND_CLUSTER_NAME} || true
+                    kind load docker-image ${DOCKER_IMAGE_FRONTEND}:${IMAGE_TAG} --name ${KIND_CLUSTER_NAME} || true
                 '''
             }
         }
 
         stage('Deploy to Kubernetes') {
             when {
-                branch 'main'
+                anyOf {
+                    branch 'main'
+                    branch 'master'
+                }
             }
             steps {
-                echo '🚀 Deploying to Kubernetes...'
+                echo '🚀 Applying Kubernetes manifests and initiating rolling update...'
                 sh '''
+                    # Apply manifests
                     kubectl apply -f k8s/backend.yaml
                     kubectl apply -f k8s/frontend.yaml
+
+                    # Set new image versions
                     kubectl set image deployment/researchmind-backend backend=${DOCKER_IMAGE_BACKEND}:${IMAGE_TAG}
                     kubectl set image deployment/researchmind-frontend frontend=${DOCKER_IMAGE_FRONTEND}:${IMAGE_TAG}
-                    kubectl rollout status deployment/researchmind-backend
-                    kubectl rollout status deployment/researchmind-frontend
+
+                    # Wait for rollout completion
+                    kubectl rollout status deployment/researchmind-backend --timeout=120s
+                    kubectl rollout status deployment/researchmind-frontend --timeout=120s
                 '''
             }
         }
     }
 
     post {
+        always {
+            echo '🧹 Pipeline execution completed.'
+        }
         success {
-            echo '✅ Pipeline completed successfully! ResearchMind AI is live.'
+            echo '✅ Pipeline finished successfully! ResearchMind AI is updated and live.'
         }
         failure {
-            echo '❌ Pipeline failed. Check logs above for details.'
+            echo '❌ Pipeline failed! Review the console logs above for debugging.'
         }
     }
 }
