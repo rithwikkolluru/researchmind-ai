@@ -103,28 +103,48 @@ Go to http://localhost:3000 in Chrome or Edge (required for Web Speech API).
 
 ```
 researchmind-ai/
-├── ai/                          # AI layer (LLM, memory, TTS)
-│   ├── agents/mentor_agent.py   # Core AI orchestrator
-│   ├── memory/mock_memory.py    # In-memory conversation history
+├── ai/                          # AI core logic (LLMs, memory, speech synthesis)
+│   ├── agents/
+│   │   └── mentor_agent.py      # Core AI mentor orchestrator & Groq integration
+│   ├── memory/
+│   │   └── mock_memory.py       # In-memory session & conversation history state
 │   ├── voice/
-│   │   ├── tts_interface.py     # Abstract TTS contract
-│   │   └── edge_tts_service.py  # Microsoft Edge neural TTS
-│   └── prompts/                 # Level-calibrated system prompts
+│   │   ├── tts_interface.py     # Abstract base contract for TTS services
+│   │   └── edge_tts_service.py  # Microsoft Edge Neural TTS service implementation
+│   └── prompts/                 # Level-calibrated system prompts (B.Tech, M.Tech, PhD)
 ├── apps/
-│   ├── api/                     # FastAPI backend
-│   │   └── app/
-│   │       ├── main.py          # App entry point
-│   │       ├── core/config.py   # Environment config
-│   │       └── routers/
-│   │           ├── chat.py      # Text chat REST API
-│   │           └── voice.py     # Voice WebSocket + TTS REST API
-│   └── web/                     # Next.js frontend
-│       └── src/
-│           ├── hooks/useVoice.ts         # Voice pipeline hook
-│           └── components/
-│               ├── chat/ChatInterface.tsx # Main UI
-│               └── voice/VoiceOrb.tsx    # Animated voice orb
-└── .env.example                 # Environment variables template
+│   ├── api/                     # FastAPI backend application
+│   │   ├── app/
+│   │   │   ├── core/
+│   │   │   │   └── config.py    # Environment settings & credentials loader
+│   │   │   ├── routers/
+│   │   │   │   ├── chat.py      # REST endpoints for text chat
+│   │   │   │   └── voice.py     # WebSocket endpoints & TTS audio streaming
+│   │   │   └── main.py          # FastAPI application entry point
+│   │   ├── tests/               # Pytest automated test suite
+│   │   │   └── test_api.py
+│   │   └── requirements.txt     # Python runtime dependencies
+│   └── web/                     # Next.js frontend web app
+│       ├── src/
+│       │   ├── components/
+│       │   │   ├── chat/
+│       │   │   │   └── ChatInterface.tsx # Primary chat dashboard UI
+│       │   │   └── voice/
+│       │   │       └── VoiceOrb.tsx      # Animated interactive voice orb component
+│       │   └── hooks/
+│       │       └── useVoice.ts  # WebSockets voice recording & audio streaming hook
+│       ├── package.json         # Node.js dependencies & scripts
+│       └── package-lock.json
+├── docker/                      # Containerization configurations
+│   ├── Dockerfile.backend       # Multi-stage Dockerfile for FastAPI
+│   └── Dockerfile.frontend      # Multi-stage Dockerfile for Next.js
+├── k8s/                         # Kubernetes deployment manifests
+│   ├── backend.yaml             # Deployment & Service specs for backend API
+│   └── frontend.yaml            # Deployment & Service specs for Next.js web app
+├── .env.example                 # Template for required environment variables
+├── .gitignore                   # Git ignore patterns
+├── Jenkinsfile                  # Declarative CI/CD pipeline configuration
+└── README.md                    # Project documentation & DevOps overview
 ```
 
 ---
