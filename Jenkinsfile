@@ -26,7 +26,7 @@ pipeline {
                         echo '🐍 Installing Python dependencies...'
                         sh '''
                             cd apps/api
-                            pip install --no-cache-dir -r requirements.txt
+                            python3 -m pip install --no-cache-dir -r requirements.txt
                         '''
                     }
                 }
@@ -49,7 +49,7 @@ pipeline {
                         echo '🧪 Running backend pytest suite...'
                         sh '''
                             cd apps/api
-                            python -m pytest tests/ -v --tb=short || echo "⚠️ No tests found or tests skipped."
+                            python3 -m pytest tests/ -v --tb=short || echo "⚠️ No tests found or tests skipped."
                         '''
                     }
                 }
