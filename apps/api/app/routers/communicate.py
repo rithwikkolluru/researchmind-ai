@@ -16,7 +16,7 @@ router = APIRouter()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq")
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
 
 
 class EmailRequest(BaseModel):
@@ -78,7 +78,7 @@ def _call_groq_email(prompt: str) -> str:
 def _call_gemini_email(prompt: str) -> str:
     import google.generativeai as genai
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel("gemini-1.5-flash-latest")
+    model = genai.GenerativeModel("gemini-2.5-flash")
     response = model.generate_content(prompt)
     return response.text
 
@@ -119,7 +119,16 @@ async def generate_email(req: EmailRequest):
     try:
         prompt = _build_email_prompt(req)
 
-        if LLM_PROVIDER == "groq" and GROQ_API_KEY:
+        if LLM_PROVIDER == "gemini" and GEMINI_API_KEY:
+            try:
+                raw = _call_gemini_email(prompt)
+            except Exception as e:
+                logger.error("Gemini API failed: %s. Attempting fallback to Groq...", e)
+                if GROQ_API_KEY:
+                    raw = _call_groq_email(prompt)
+                else:
+                    raise e
+        elif LLM_PROVIDER == "groq" and GROQ_API_KEY:
             try:
                 raw = _call_groq_email(prompt)
             except Exception as e:
@@ -128,8 +137,6 @@ async def generate_email(req: EmailRequest):
                     raw = _call_gemini_email(prompt)
                 else:
                     raise e
-        elif LLM_PROVIDER == "gemini" and GEMINI_API_KEY:
-            raw = _call_gemini_email(prompt)
         else:
             # Mock fallback for development
             raw = f"""SUBJECT: {req.purpose_label} — {req.recipient_label}

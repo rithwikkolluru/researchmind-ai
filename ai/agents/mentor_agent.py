@@ -45,7 +45,7 @@ class MentorAgent:
 
     def __init__(self, memory_service: MemoryInterface):
         self.memory_service = memory_service
-        self._llm_provider = os.getenv("LLM_PROVIDER", "groq")
+        self._llm_provider = os.getenv("LLM_PROVIDER", "gemini")
         self._groq_api_key = os.getenv("GROQ_API_KEY", "")
         self._gemini_api_key = os.getenv("GEMINI_API_KEY", "")
 
@@ -113,7 +113,15 @@ class MentorAgent:
           - 'ollama' → Local Ollama — fully offline, zero cost
           - 'mock'   → Deterministic mock — for tests / no API key
         """
-        if self._llm_provider == "groq" and self._groq_api_key:
+        if self._llm_provider == "gemini" and self._gemini_api_key:
+            try:
+                return self._call_gemini(system_prompt, history, user_message)
+            except Exception as e:
+                logger.error("Gemini API failed: %s. Attempting fallback to Groq...", e)
+                if self._groq_api_key:
+                    return self._call_groq(system_prompt, history, user_message)
+                raise e
+        elif self._llm_provider == "groq" and self._groq_api_key:
             try:
                 return self._call_groq(system_prompt, history, user_message)
             except Exception as e:
@@ -121,15 +129,11 @@ class MentorAgent:
                 if self._gemini_api_key:
                     return self._call_gemini(system_prompt, history, user_message)
                 raise e
-        elif self._llm_provider == "gemini" and self._gemini_api_key:
-            return self._call_gemini(system_prompt, history, user_message)
         elif self._llm_provider == "ollama":
             return self._call_ollama(system_prompt, history, user_message)
         else:
-            # Mock fallback — useful during dev when no API key is configured
             logger.warning(
-                "No LLM provider configured (LLM_PROVIDER=%s). Using mock response. "
-                "Set GROQ_API_KEY or GEMINI_API_KEY in .env to enable real responses.",
+                "No LLM provider configured (LLM_PROVIDER=%s). Using mock response.",
                 self._llm_provider,
             )
             return self._mock_response(user_message, history)
@@ -158,7 +162,7 @@ class MentorAgent:
 
         genai.configure(api_key=self._gemini_api_key)
         model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash-latest",
+            model_name="gemini-2.5-flash",
             system_instruction=system_prompt,
         )
 
