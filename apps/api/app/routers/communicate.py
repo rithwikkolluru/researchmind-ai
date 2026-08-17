@@ -78,7 +78,7 @@ def _call_groq_email(prompt: str) -> str:
 def _call_gemini_email(prompt: str) -> str:
     import google.generativeai as genai
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel("gemini-2.5-flash")
+    model = genai.GenerativeModel("gemini-1.5-flash")
     response = model.generate_content(prompt)
     return response.text
 
@@ -120,7 +120,14 @@ async def generate_email(req: EmailRequest):
         prompt = _build_email_prompt(req)
 
         if LLM_PROVIDER == "groq" and GROQ_API_KEY:
-            raw = _call_groq_email(prompt)
+            try:
+                raw = _call_groq_email(prompt)
+            except Exception as e:
+                logger.error("Groq API failed: %s. Attempting fallback to Gemini...", e)
+                if GEMINI_API_KEY:
+                    raw = _call_gemini_email(prompt)
+                else:
+                    raise e
         elif LLM_PROVIDER == "gemini" and GEMINI_API_KEY:
             raw = _call_gemini_email(prompt)
         else:
