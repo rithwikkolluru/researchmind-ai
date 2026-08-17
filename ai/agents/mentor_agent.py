@@ -113,7 +113,13 @@ class MentorAgent:
           - 'mock'   → Deterministic mock — for tests / no API key
         """
         if self._llm_provider == "groq" and self._groq_api_key:
-            return self._call_groq(system_prompt, history, user_message)
+            try:
+                return self._call_groq(system_prompt, history, user_message)
+            except Exception as e:
+                logger.error("Groq API failed: %s. Attempting fallback to Gemini...", e)
+                if self._gemini_api_key:
+                    return self._call_gemini(system_prompt, history, user_message)
+                raise e
         elif self._llm_provider == "gemini" and self._gemini_api_key:
             return self._call_gemini(system_prompt, history, user_message)
         elif self._llm_provider == "ollama":
@@ -146,12 +152,12 @@ class MentorAgent:
         return completion.choices[0].message.content
 
     def _call_gemini(self, system_prompt: str, history: list[dict], user_message: str) -> str:
-        """Call Gemini 2.5 Flash — preferred for document-heavy sessions."""
+        """Call Gemini 1.5 Flash — preferred for document-heavy sessions."""
         import google.generativeai as genai  # lazy import
 
         genai.configure(api_key=self._gemini_api_key)
         model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
+            model_name="gemini-1.5-flash",
             system_instruction=system_prompt,
         )
 
