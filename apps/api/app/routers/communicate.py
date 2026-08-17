@@ -67,7 +67,7 @@ def _call_groq_email(prompt: str) -> str:
     from groq import Groq
     client = Groq(api_key=GROQ_API_KEY)
     completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="llama3-70b-8192",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=800,
         temperature=0.7,
@@ -78,7 +78,7 @@ def _call_groq_email(prompt: str) -> str:
 def _call_gemini_email(prompt: str) -> str:
     import google.generativeai as genai
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-1.5-flash-latest")
     response = model.generate_content(prompt)
     return response.text
 

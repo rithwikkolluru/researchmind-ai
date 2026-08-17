@@ -145,7 +145,7 @@ class MentorAgent:
         messages.append({"role": "user", "content": user_message})
 
         completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="llama3-70b-8192",
             messages=messages,
             max_tokens=400,  # Keep voice responses concise (~60s of speech)
             temperature=0.7,
@@ -158,7 +158,7 @@ class MentorAgent:
 
         genai.configure(api_key=self._gemini_api_key)
         model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
+            model_name="gemini-1.5-flash-latest",
             system_instruction=system_prompt,
         )
 
