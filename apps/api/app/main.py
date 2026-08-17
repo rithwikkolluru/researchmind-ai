@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -8,16 +9,23 @@ from app.core.config import settings
 from app.database.database import create_db
 from app.routers import health, chat, voice, fun, communicate
 
+# Build CORS origins — always allow localhost, plus any origins set in env
+_extra_origins = os.getenv("ALLOWED_ORIGINS", "")
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+]
+if _extra_origins:
+    ALLOWED_ORIGINS += [o.strip() for o in _extra_origins.split(",") if o.strip()]
 
 app = FastAPI(
     title=settings.APP_NAME,
     version="1.0.0"
 )
 
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

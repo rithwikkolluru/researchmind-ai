@@ -1,0 +1,39 @@
+# render.yaml — Render Blueprint
+# Defines both the backend (FastAPI) and frontend (Next.js) services.
+# When you connect your GitHub repo on Render, it reads this file
+# automatically and creates both services for you in one click.
+
+services:
+
+  # ── Backend: FastAPI ──────────────────────────────────────────────────────
+  - type: web
+    name: researchmind-backend
+    runtime: python
+    rootDir: apps/api
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: LLM_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false        # You will paste this secret in Render dashboard
+      - key: GEMINI_API_KEY
+        sync: false        # You will paste this secret in Render dashboard
+      - key: ALLOWED_ORIGINS
+        sync: false        # Paste your frontend Render URL here after deploy
+
+  # ── Frontend: Next.js ─────────────────────────────────────────────────────
+  - type: web
+    name: researchmind-frontend
+    runtime: node
+    rootDir: apps/web
+    buildCommand: npm install && npm run build
+    startCommand: node .next/standalone/server.js
+    envVars:
+      - key: NODE_VERSION
+        value: 18.20.4
+      - key: NEXT_PUBLIC_API_URL
+        sync: false        # Paste your backend Render URL here (https://...)
+      - key: NEXT_PUBLIC_WS_URL
+        sync: false        # Paste your backend Render URL here (wss://...)
