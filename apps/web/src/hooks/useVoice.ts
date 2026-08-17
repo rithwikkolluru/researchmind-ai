@@ -85,7 +85,8 @@ export function useVoice(): UseVoiceReturn {
 
   // Connect and manage WebSocket connection
   useEffect(() => {
-    const wsUrl = `ws://localhost:8000/api/voice/ws/${sessionId}`;
+    const wsBase = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
+    const wsUrl = `${wsBase}/api/voice/ws/${sessionId}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

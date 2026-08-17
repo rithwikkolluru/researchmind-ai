@@ -105,6 +105,7 @@ export default function VaaniInterface() {
 
   const theme = LEVEL_THEME[level];
   const activeModeConfig = MENTOR_MODES.find(m => m.value === mode) || MENTOR_MODES[0];
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -118,7 +119,7 @@ export default function VaaniInterface() {
     addMessage({ role: "user", content: msg });
     setTyping(true);
     try {
-      const res = await fetch("http://localhost:8000/api/chat", {
+      const res = await fetch(`${apiBase}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -129,7 +130,7 @@ export default function VaaniInterface() {
       const data = await res.json();
       addMessage({ role: "assistant", content: data.response });
       try {
-        const ttsRes = await fetch("http://localhost:8000/api/voice/tts", {
+        const ttsRes = await fetch(`${apiBase}/api/voice/tts`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text: data.response, language: "en" }),
@@ -164,7 +165,7 @@ export default function VaaniInterface() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("session_id", sessionId);
-      const res = await fetch("http://localhost:8000/api/chat/upload", { method: "POST", body: formData });
+      const res = await fetch(`${apiBase}/api/chat/upload`, { method: "POST", body: formData });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.detail || "Failed to upload document");

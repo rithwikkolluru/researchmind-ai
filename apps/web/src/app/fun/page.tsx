@@ -176,7 +176,8 @@ export default function FunZonePage() {
       form.append("meme", memeFile);
       form.append("photo", photoFile);
       form.append("opacity", "0.80");
-      const res = await fetch("http://localhost:8000/api/fun/meme-mix", {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${apiBase}/api/fun/meme-mix`, {
         method: "POST",
         body: form,
       });
@@ -199,7 +200,8 @@ export default function FunZonePage() {
     setImagineError(null);
     setImagineResult(null);
     try {
-      const res = await fetch("http://localhost:8000/api/fun/imagine", {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${apiBase}/api/fun/imagine`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
