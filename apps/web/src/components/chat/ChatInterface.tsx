@@ -202,8 +202,8 @@ export default function RithvikIntelligenceInterface() {
             <BookOpen className="w-4 h-4 text-white" />
           </div>
           <div>
-            <h1 className="text-base font-bold text-white leading-none">Rithvik Intelligence</h1>
-            <p className="text-[10px] text-gray-500 leading-none mt-0.5">ResearchMind AI</p>
+            <h1 className="text-base font-bold text-white leading-none tracking-widest">J.A.R.V.I.S</h1>
+            <p className="text-[10px] text-gray-500 leading-none mt-0.5">Rithvik Intelligence</p>
           </div>
         </div>
 
@@ -347,7 +347,7 @@ export default function RithvikIntelligenceInterface() {
                   <span className="text-3xl">{theme.emoji}</span>
                 </div>
                 <div>
-                  <p className="text-gray-300 font-medium">Hello, I am Rithvik Intelligence.</p>
+                  <p className="text-gray-300 font-medium">Hello, I am J.A.R.V.I.S.</p>
                   <p className="text-gray-500 text-sm mt-1">
                     Your {theme.name} AI research mentor.
                     {mode !== "default" && <span className="ml-1" style={{ color: theme.accent }}>[ {activeModeConfig.label} active ]</span>}
