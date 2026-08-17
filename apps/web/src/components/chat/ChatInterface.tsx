@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * VaaniInterface — Voice-first research mentor UI with:
+ * RithvikIntelligenceInterface — Voice-first research mentor UI with:
  *  - Level-specific color themes (B.Tech=Cyan, M.Tech=Indigo, PhD=Emerald)
  *  - Advanced Mentor Mode switcher (Teach, Paper Discussion, Roadmap, Debate)
  *  - Research Quality Tracker toggle
@@ -84,7 +84,7 @@ const MENTOR_MODES: { value: MentorMode; label: string; icon: React.ReactNode; d
   { value: "debate",           label: "Debate Mode", icon: <Swords size={14} />,       desc: "AI debates your ideas to sharpen thinking", forLevels: ["mtech","phd"] },
 ];
 
-export default function VaaniInterface() {
+export default function RithvikIntelligenceInterface() {
   const {
     messages, addMessage, setTyping, isTyping,
     sessionId, level, language, clearMessages,
@@ -202,7 +202,7 @@ export default function VaaniInterface() {
             <BookOpen className="w-4 h-4 text-white" />
           </div>
           <div>
-            <h1 className="text-base font-bold text-white leading-none">Vaani</h1>
+            <h1 className="text-base font-bold text-white leading-none">Rithvik Intelligence</h1>
             <p className="text-[10px] text-gray-500 leading-none mt-0.5">ResearchMind AI</p>
           </div>
         </div>
@@ -347,7 +347,7 @@ export default function VaaniInterface() {
                   <span className="text-3xl">{theme.emoji}</span>
                 </div>
                 <div>
-                  <p className="text-gray-300 font-medium">Hello, I am Vaani.</p>
+                  <p className="text-gray-300 font-medium">Hello, I am Rithvik Intelligence.</p>
                   <p className="text-gray-500 text-sm mt-1">
                     Your {theme.name} AI research mentor.
                     {mode !== "default" && <span className="ml-1" style={{ color: theme.accent }}>[ {activeModeConfig.label} active ]</span>}

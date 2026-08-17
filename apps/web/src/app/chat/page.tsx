@@ -1,10 +1,10 @@
-import VaaniInterface from "@/components/chat/ChatInterface";
+import RithvikIntelligenceInterface from "@/components/chat/ChatInterface";
 
 export const metadata = {
-  title: "Vaani — AI Research Mentor",
+  title: "Rithvik Intelligence — AI Research Mentor",
   description: "Voice-to-voice AI mentor for B.Tech, M.Tech and PhD students.",
 };
 
 export default function ChatPage() {
-  return <VaaniInterface />;
+  return <RithvikIntelligenceInterface />;
 }
