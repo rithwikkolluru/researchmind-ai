@@ -87,9 +87,10 @@ class MentorAgent:
         except Exception as exc:
             logger.error("LLM call failed for session %s: %s", session_id, exc)
             # Graceful fallback — always give the student something
+            error_details = str(exc)
             response_text = (
-                "I'm having a moment of difficulty connecting to my knowledge base right now. "
-                "Could you repeat your question? I want to make sure I give you the best guidance."
+                f"I'm having a moment of difficulty connecting to my knowledge base right now. "
+                f"Error details for debugging: {error_details}"
             )
 
         # Save assistant turn to memory
