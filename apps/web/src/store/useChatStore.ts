@@ -20,6 +20,7 @@ interface ChatState {
   enableQualityTracker: boolean;
 
   addMessage: (message: Omit<Message, "timestamp">) => void;
+  setMessages: (messages: Message[]) => void;
   setTyping: (typing: boolean) => void;
   setLevel: (level: StudentLevel) => void;
   setLanguage: (language: Language) => void;
@@ -45,6 +46,7 @@ export const useChatStore = create<ChatState>((set) => ({
       ],
     })),
 
+  setMessages: (messages) => set({ messages }),
   setTyping: (typing) => set({ isTyping: typing }),
   setLevel: (level) => set({ level }),
   setLanguage: (language) => set({ language }),
