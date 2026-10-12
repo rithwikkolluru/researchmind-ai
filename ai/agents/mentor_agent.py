@@ -25,6 +25,9 @@ LLM swap path:
 import logging
 import os
 from typing import Optional
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from ai.prompts.system_prompt import get_system_prompt, StudentLevel
 from ai.memory.memory_interface import MemoryInterface
@@ -45,9 +48,18 @@ class MentorAgent:
 
     def __init__(self, memory_service: MemoryInterface):
         self.memory_service = memory_service
-        self._llm_provider = os.getenv("LLM_PROVIDER", "gemini")
-        self._groq_api_key = os.getenv("GROQ_API_KEY", "")
-        self._gemini_api_key = os.getenv("GEMINI_API_KEY", "")
+
+    @property
+    def _llm_provider(self) -> str:
+        return os.getenv("LLM_PROVIDER", "groq").lower()
+
+    @property
+    def _groq_api_key(self) -> str:
+        return os.getenv("GROQ_API_KEY", "")
+
+    @property
+    def _gemini_api_key(self) -> str:
+        return os.getenv("GEMINI_API_KEY", "")
 
     def generate_response(
         self,
@@ -139,7 +151,7 @@ class MentorAgent:
             return self._mock_response(user_message, history)
 
     def _call_groq(self, system_prompt: str, history: list[dict], user_message: str) -> str:
-        """Call Groq API with Llama 3.3 70B — optimized for low latency conversational turns."""
+        """Call Groq API with configured model (with fallback)."""
         from groq import Groq  # lazy import
 
         client = Groq(api_key=self._groq_api_key)
@@ -148,13 +160,32 @@ class MentorAgent:
             messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": user_message})
 
-        completion = client.chat.completions.create(
-            model="llama3-70b-8192",
-            messages=messages,
-            max_tokens=400,  # Keep voice responses concise (~60s of speech)
-            temperature=0.7,
-        )
-        return completion.choices[0].message.content
+        models_to_try = [
+            os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+            "openai/gpt-oss-120b",
+            "qwen/qwen3.8-27b",
+            "llama-3.3-70b-versatile",
+        ]
+        seen = set()
+        unique_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
+
+        last_err = None
+        for model_name in unique_models:
+            try:
+                completion = client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    max_tokens=400,  # Keep voice responses concise (~60s of speech)
+                    temperature=0.7,
+                )
+                return completion.choices[0].message.content
+            except Exception as e:
+                logger.warning("Groq model %s failed: %s", model_name, e)
+                last_err = e
+
+        if last_err:
+            raise last_err
+        return ""
 
     def _call_gemini(self, system_prompt: str, history: list[dict], user_message: str) -> str:
         """Call Gemini 1.5 Flash — preferred for document-heavy sessions."""

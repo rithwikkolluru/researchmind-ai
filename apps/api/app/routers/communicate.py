@@ -65,14 +65,32 @@ IMPORTANT RULES:
 
 def _call_groq_email(prompt: str) -> str:
     from groq import Groq
-    client = Groq(api_key=GROQ_API_KEY)
-    completion = client.chat.completions.create(
-        model="llama3-70b-8192",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=800,
-        temperature=0.7,
-    )
-    return completion.choices[0].message.content
+    api_key = os.getenv("GROQ_API_KEY", GROQ_API_KEY)
+    client = Groq(api_key=api_key)
+    models_to_try = [
+        os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+        "openai/gpt-oss-120b",
+        "qwen/qwen3.8-27b",
+        "llama-3.3-70b-versatile",
+    ]
+    seen = set()
+    unique_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
+    last_err = None
+    for model_name in unique_models:
+        try:
+            completion = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=800,
+                temperature=0.7,
+            )
+            return completion.choices[0].message.content
+        except Exception as e:
+            logger.warning("Groq email model %s failed: %s", model_name, e)
+            last_err = e
+    if last_err:
+        raise last_err
+    return ""
 
 
 def _call_gemini_email(prompt: str) -> str:

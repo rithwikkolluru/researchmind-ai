@@ -8,6 +8,7 @@ import PyPDF2
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+@router.post("", response_model=ChatResponse)
 @router.post("/", response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest):
     try:
