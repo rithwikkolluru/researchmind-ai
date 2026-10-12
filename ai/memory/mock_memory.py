@@ -1,10 +1,16 @@
-from typing import List, Dict, Any
+"""
+Memory Service Module — DB-backed SQLAlchemy memory persistence with mock fallback.
+"""
+
+from typing import List, Dict, Any, Optional
 from .memory_interface import MemoryInterface
+from .memory_service import SQLAlchemyMemoryService
+
 
 class MockMemoryService(MemoryInterface):
     """
     An in-memory dictionary-based implementation of MemoryInterface.
-    Useful for local development and testing without a real database.
+    Kept for lightweight, isolated unit testing without a database.
     """
     def __init__(self):
         self._store: Dict[str, List[Dict[str, Any]]] = {}
@@ -20,3 +26,6 @@ class MockMemoryService(MemoryInterface):
     def clear_history(self, session_id: str) -> None:
         if session_id in self._store:
             del self._store[session_id]
+
+
+__all__ = ["SQLAlchemyMemoryService", "MockMemoryService"]

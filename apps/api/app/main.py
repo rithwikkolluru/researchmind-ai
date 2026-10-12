@@ -18,9 +18,19 @@ ALLOWED_ORIGINS = [
 if _extra_origins:
     ALLOWED_ORIGINS += [o.strip() for o in _extra_origins.split(",") if o.strip()]
 
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    create_db()
+    yield
+
+
 app = FastAPI(
     title=settings.APP_NAME,
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -30,11 +40,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def startup():
-    create_db()
 
 
 app.include_router(

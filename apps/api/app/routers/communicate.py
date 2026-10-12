@@ -66,8 +66,9 @@ IMPORTANT RULES:
 def _call_groq_email(prompt: str) -> str:
     from groq import Groq
     client = Groq(api_key=GROQ_API_KEY)
+    model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
     completion = client.chat.completions.create(
-        model="llama3-70b-8192",
+        model=model,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=800,
         temperature=0.7,
@@ -78,7 +79,8 @@ def _call_groq_email(prompt: str) -> str:
 def _call_gemini_email(prompt: str) -> str:
     import google.generativeai as genai
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel("gemini-2.5-flash")
+    model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    model = genai.GenerativeModel(model_name)
     response = model.generate_content(prompt)
     return response.text
 
@@ -159,8 +161,54 @@ REASON:
 This email was structured with a clear purpose statement in the opening to respect the recipient's time. The context is presented concisely, followed by a clear and respectful request. The closing is professional and invites a response without being demanding."""
         
         parsed = _parse_response(raw)
+
+        # Persist generated email to database
+        try:
+            from sqlmodel import Session
+            from app.database.database import engine
+            from app.models.email import SavedEmail
+
+            with Session(engine) as session:
+                saved_email = SavedEmail(
+                    recipient=req.recipient,
+                    recipient_label=req.recipient_label,
+                    purpose=req.purpose,
+                    purpose_label=req.purpose_label,
+                    context=req.context,
+                    tone=req.tone,
+                    experience_level=req.experience_level,
+                    desired_outcome=req.desired_outcome,
+                    subject=parsed["subject"],
+                    email_body=parsed["email"],
+                    reason=parsed["reason"],
+                )
+                session.add(saved_email)
+                session.commit()
+                session.refresh(saved_email)
+                parsed["id"] = saved_email.id
+        except Exception as db_err:
+            logger.warning("Could not persist generated email to DB: %s", db_err)
+
         return parsed
 
     except Exception as e:
         logger.error(f"Error generating email: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to generate email: {str(e)}")
+
+
+@router.get("/history")
+async def get_email_history(limit: int = 20, offset: int = 0):
+    """Fetch past generated emails from the database."""
+    try:
+        from sqlmodel import Session, select
+        from app.database.database import engine
+        from app.models.email import SavedEmail
+
+        with Session(engine) as session:
+            stmt = select(SavedEmail).order_by(SavedEmail.id.desc()).offset(offset).limit(limit)
+            emails = session.exec(stmt).all()
+            return emails
+    except Exception as e:
+        logger.error("Error retrieving email history: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to retrieve email history.")
+

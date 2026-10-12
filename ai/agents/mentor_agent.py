@@ -22,9 +22,10 @@ LLM swap path:
   - Ollama (local): set LLM_PROVIDER=ollama for fully offline / privacy mode
 """
 
+import json
 import logging
 import os
-from typing import Optional
+from typing import Generator, Optional
 
 from ai.prompts.system_prompt import get_system_prompt, StudentLevel
 from ai.memory.memory_interface import MemoryInterface
@@ -34,20 +35,31 @@ logger = logging.getLogger(__name__)
 # Maximum number of history turns to include in context (to control token cost)
 MAX_HISTORY_TURNS = 10
 
+GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile"
+GEMINI_DEFAULT_MODEL = "gemini-1.5-flash"
+
 
 class MentorAgent:
     """
     Level-calibrated, memory-aware research mentor agent.
 
-    Uses an injected MemoryInterface for conversation history —
-    swap MockMemoryService for a DB-backed service in production.
+    Uses an injected MemoryInterface for conversation history.
     """
 
     def __init__(self, memory_service: MemoryInterface):
         self.memory_service = memory_service
-        self._llm_provider = os.getenv("LLM_PROVIDER", "gemini")
-        self._groq_api_key = os.getenv("GROQ_API_KEY", "")
-        self._gemini_api_key = os.getenv("GEMINI_API_KEY", "")
+
+    @property
+    def _llm_provider(self) -> str:
+        return os.getenv("LLM_PROVIDER", "gemini").lower()
+
+    @property
+    def _groq_api_key(self) -> str:
+        return os.getenv("GROQ_API_KEY", "")
+
+    @property
+    def _gemini_api_key(self) -> str:
+        return os.getenv("GEMINI_API_KEY", "")
 
     def generate_response(
         self,
@@ -57,6 +69,7 @@ class MentorAgent:
         language: str = "English",
         mode: str = "default",
         enable_quality_tracker: bool = False,
+        context: Optional[str] = None,
     ) -> str:
         """
         Generate a mentor response for the given student message.
@@ -66,6 +79,9 @@ class MentorAgent:
             user_message: The student's transcribed or typed message.
             level: Academic level for persona calibration.
             language: Preferred response language.
+            mode: Mentor active mode.
+            enable_quality_tracker: Score intellectual quality.
+            context: Optional retrieved document context for RAG.
 
         Returns:
             Response text string suitable for TTS or text display.
@@ -77,10 +93,14 @@ class MentorAgent:
         history = self.memory_service.get_conversation_history(session_id)
         recent_history = history[-(MAX_HISTORY_TURNS * 2):]  # user+assistant pairs
 
+        system_prompt = get_system_prompt(level, language, mode, enable_quality_tracker)
+        if context:
+            system_prompt += f"\n\n[RELEVANT CONTEXT FROM UPLOADED DOCUMENTS]:\n{context}"
+
         # Generate response via LLM
         try:
             response_text = self._call_llm(
-                system_prompt=get_system_prompt(level, language, mode, enable_quality_tracker),
+                system_prompt=system_prompt,
                 history=recent_history,
                 user_message=user_message,
             )
@@ -98,6 +118,55 @@ class MentorAgent:
 
         return response_text
 
+    def generate_response_stream(
+        self,
+        session_id: str,
+        user_message: str,
+        level: StudentLevel = "btech",
+        language: str = "English",
+        mode: str = "default",
+        enable_quality_tracker: bool = False,
+        context: Optional[str] = None,
+    ) -> Generator[str, None, None]:
+        """
+        Stream a mentor response token-by-token for the given student message.
+
+        Yields:
+            Token chunks as strings.
+        """
+        # Save user turn to memory
+        self.memory_service.add_message(session_id, "user", user_message)
+
+        # Build prompt context from history
+        history = self.memory_service.get_conversation_history(session_id)
+        recent_history = history[-(MAX_HISTORY_TURNS * 2):]
+
+        system_prompt = get_system_prompt(level, language, mode, enable_quality_tracker)
+        if context:
+            system_prompt += f"\n\n[RELEVANT CONTEXT FROM UPLOADED DOCUMENTS]:\n{context}"
+
+        accumulated: list[str] = []
+        try:
+            for token in self._stream_llm(
+                system_prompt=system_prompt,
+                history=recent_history,
+                user_message=user_message,
+            ):
+                accumulated.append(token)
+                yield token
+        except Exception as exc:
+            logger.error("LLM stream failed for session %s: %s", session_id, exc)
+            error_msg = (
+                f"I'm having a moment of difficulty connecting to my knowledge base right now. "
+                f"Error details for debugging: {str(exc)}"
+            )
+            accumulated.append(error_msg)
+            yield error_msg
+
+        # Save assistant turn to memory once stream completes
+        full_response = "".join(accumulated)
+        self.memory_service.add_message(session_id, "assistant", full_response)
+
     def _call_llm(
         self,
         system_prompt: str,
@@ -109,7 +178,7 @@ class MentorAgent:
 
         Provider selection is driven by LLM_PROVIDER env var:
           - 'groq'   → Groq API (Llama 3.3 70B) — default, fast
-          - 'gemini' → Gemini 2.5 Flash — better for document tasks
+          - 'gemini' → Gemini 1.5 Flash / 2.0 Flash — better for document tasks
           - 'ollama' → Local Ollama — fully offline, zero cost
           - 'mock'   → Deterministic mock — for tests / no API key
         """
@@ -138,6 +207,42 @@ class MentorAgent:
             )
             return self._mock_response(user_message, history)
 
+    def _stream_llm(
+        self,
+        system_prompt: str,
+        history: list[dict],
+        user_message: str,
+    ) -> Generator[str, None, None]:
+        """Route streaming to configured LLM provider."""
+        if self._llm_provider == "gemini" and self._gemini_api_key:
+            try:
+                yield from self._stream_gemini(system_prompt, history, user_message)
+                return
+            except Exception as e:
+                logger.error("Gemini stream failed: %s. Attempting fallback to Groq...", e)
+                if self._groq_api_key:
+                    yield from self._stream_groq(system_prompt, history, user_message)
+                    return
+                raise e
+        elif self._llm_provider == "groq" and self._groq_api_key:
+            try:
+                yield from self._stream_groq(system_prompt, history, user_message)
+                return
+            except Exception as e:
+                logger.error("Groq stream failed: %s. Attempting fallback to Gemini...", e)
+                if self._gemini_api_key:
+                    yield from self._stream_gemini(system_prompt, history, user_message)
+                    return
+                raise e
+        elif self._llm_provider == "ollama":
+            yield from self._stream_ollama(system_prompt, history, user_message)
+        else:
+            logger.warning(
+                "No LLM provider configured (LLM_PROVIDER=%s). Using mock streaming.",
+                self._llm_provider,
+            )
+            yield from self._stream_mock(user_message, history)
+
     def _call_groq(self, system_prompt: str, history: list[dict], user_message: str) -> str:
         """Call Groq API with Llama 3.3 70B — optimized for low latency conversational turns."""
         from groq import Groq  # lazy import
@@ -148,21 +253,48 @@ class MentorAgent:
             messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": user_message})
 
+        model = os.getenv("GROQ_MODEL", GROQ_DEFAULT_MODEL)
         completion = client.chat.completions.create(
-            model="llama3-70b-8192",
+            model=model,
             messages=messages,
-            max_tokens=400,  # Keep voice responses concise (~60s of speech)
+            max_tokens=600,
             temperature=0.7,
         )
         return completion.choices[0].message.content
 
+    def _stream_groq(
+        self, system_prompt: str, history: list[dict], user_message: str
+    ) -> Generator[str, None, None]:
+        """Stream response tokens from Groq API."""
+        from groq import Groq  # lazy import
+
+        client = Groq(api_key=self._groq_api_key)
+        messages = [{"role": "system", "content": system_prompt}]
+        for turn in history[:-1]:
+            messages.append({"role": turn["role"], "content": turn["content"]})
+        messages.append({"role": "user", "content": user_message})
+
+        model = os.getenv("GROQ_MODEL", GROQ_DEFAULT_MODEL)
+        stream = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            max_tokens=600,
+            temperature=0.7,
+            stream=True,
+        )
+        for chunk in stream:
+            content = chunk.choices[0].delta.content if chunk.choices and chunk.choices[0].delta else None
+            if content:
+                yield content
+
     def _call_gemini(self, system_prompt: str, history: list[dict], user_message: str) -> str:
-        """Call Gemini 1.5 Flash — preferred for document-heavy sessions."""
+        """Call Gemini API — preferred for document-heavy sessions."""
         import google.generativeai as genai  # lazy import
 
         genai.configure(api_key=self._gemini_api_key)
+        model_name = os.getenv("GEMINI_MODEL", GEMINI_DEFAULT_MODEL)
         model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
+            model_name=model_name,
             system_instruction=system_prompt,
         )
 
@@ -175,6 +307,30 @@ class MentorAgent:
         chat = model.start_chat(history=chat_history)
         response = chat.send_message(user_message)
         return response.text
+
+    def _stream_gemini(
+        self, system_prompt: str, history: list[dict], user_message: str
+    ) -> Generator[str, None, None]:
+        """Stream response tokens from Gemini API."""
+        import google.generativeai as genai  # lazy import
+
+        genai.configure(api_key=self._gemini_api_key)
+        model_name = os.getenv("GEMINI_MODEL", GEMINI_DEFAULT_MODEL)
+        model = genai.GenerativeModel(
+            model_name=model_name,
+            system_instruction=system_prompt,
+        )
+
+        chat_history = []
+        for turn in history[:-1]:
+            role = "user" if turn["role"] == "user" else "model"
+            chat_history.append({"role": role, "parts": [turn["content"]]})
+
+        chat = model.start_chat(history=chat_history)
+        response = chat.send_message(user_message, stream=True)
+        for chunk in response:
+            if chunk.text:
+                yield chunk.text
 
     def _call_ollama(self, system_prompt: str, history: list[dict], user_message: str) -> str:
         """Call local Ollama instance — fully offline, zero cost, privacy-preserving."""
@@ -196,6 +352,37 @@ class MentorAgent:
         response.raise_for_status()
         return response.json()["message"]["content"]
 
+    def _stream_ollama(
+        self, system_prompt: str, history: list[dict], user_message: str
+    ) -> Generator[str, None, None]:
+        """Stream tokens from local Ollama instance."""
+        import httpx  # lazy import
+
+        ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+        ollama_model = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+
+        messages = [{"role": "system", "content": system_prompt}]
+        for turn in history[:-1]:
+            messages.append({"role": turn["role"], "content": turn["content"]})
+        messages.append({"role": "user", "content": user_message})
+
+        with httpx.stream(
+            "POST",
+            f"{ollama_url}/api/chat",
+            json={"model": ollama_model, "messages": messages, "stream": True},
+            timeout=60.0,
+        ) as response:
+            response.raise_for_status()
+            for line in response.iter_lines():
+                if line:
+                    try:
+                        data = json.loads(line)
+                        chunk = data.get("message", {}).get("content", "")
+                        if chunk:
+                            yield chunk
+                    except json.JSONDecodeError:
+                        continue
+
     def _mock_response(self, user_message: str, history: list[dict]) -> str:
         """Deterministic mock response for testing without an API key."""
         turn_count = len(history)
@@ -205,3 +392,12 @@ class MentorAgent:
             "To get real AI responses, add your GROQ_API_KEY to the .env file. "
             "I'm here and ready to guide your research journey!"
         )
+
+    def _stream_mock(
+        self, user_message: str, history: list[dict]
+    ) -> Generator[str, None, None]:
+        """Deterministic token-by-token mock stream for testing."""
+        response = self._mock_response(user_message, history)
+        tokens = response.split(" ")
+        for i, word in enumerate(tokens):
+            yield word + (" " if i < len(tokens) - 1 else "")

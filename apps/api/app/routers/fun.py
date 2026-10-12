@@ -15,7 +15,11 @@ from typing import Optional
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
-from PIL import Image, ImageEnhance, ImageFilter
+
+try:
+    from PIL import Image, ImageEnhance, ImageFilter
+except ImportError:
+    Image = ImageEnhance = ImageFilter = None
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

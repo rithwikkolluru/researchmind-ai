@@ -33,7 +33,7 @@ from pydantic import BaseModel
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
 
 from ai.agents.mentor_agent import MentorAgent
-from ai.memory.mock_memory import MockMemoryService
+from ai.memory.memory_service import SQLAlchemyMemoryService
 from ai.voice.edge_tts_service import EdgeTTSService
 from ai.voice.tts_interface import TTSException
 
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Shared services — in production these would be injected via DI container
-_memory_service = MockMemoryService()
+_memory_service = SQLAlchemyMemoryService()
 _mentor_agent = MentorAgent(memory_service=_memory_service)
 _tts_service = EdgeTTSService(default_voice="default")
 

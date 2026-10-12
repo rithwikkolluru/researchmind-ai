@@ -86,7 +86,7 @@ const MENTOR_MODES: { value: MentorMode; label: string; icon: React.ReactNode; d
 
 export default function RithvikIntelligenceInterface() {
   const {
-    messages, addMessage, setTyping, isTyping,
+    messages, addMessage, appendToLastMessage, setTyping, isTyping,
     sessionId, level, language, clearMessages,
     mode, setMode, enableQualityTracker, setEnableQualityTracker,
   } = useChatStore();
@@ -118,29 +118,84 @@ export default function RithvikIntelligenceInterface() {
     setTextInput("");
     addMessage({ role: "user", content: msg });
     setTyping(true);
+    let fullResponse = "";
+
     try {
-      const res = await fetch(`${apiBase}/api/chat`, {
+      // Try streaming SSE endpoint first
+      const res = await fetch(`${apiBase}/api/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          session_id: sessionId, message: msg,
-          level, language, mode, enable_quality_tracker: enableQualityTracker,
+          session_id: sessionId,
+          message: msg,
+          level,
+          language,
+          mode,
+          enable_quality_tracker: enableQualityTracker,
         }),
       });
-      const data = await res.json();
-      addMessage({ role: "assistant", content: data.response });
-      try {
-        const ttsRes = await fetch(`${apiBase}/api/voice/tts`, {
+
+      if (res.ok && res.body) {
+        addMessage({ role: "assistant", content: "" });
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("data: ")) {
+              try {
+                const parsed = JSON.parse(trimmed.slice(6));
+                if (parsed.token) {
+                  fullResponse += parsed.token;
+                  appendToLastMessage(parsed.token);
+                }
+              } catch {
+                // Ignore parse errors on stream keep-alive
+              }
+            }
+          }
+        }
+      } else {
+        // Fallback to synchronous endpoint
+        const fallbackRes = await fetch(`${apiBase}/api/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: data.response, language: "en" }),
+          body: JSON.stringify({
+            session_id: sessionId,
+            message: msg,
+            level,
+            language,
+            mode,
+            enable_quality_tracker: enableQualityTracker,
+          }),
         });
-        if (ttsRes.ok) {
-          const audioBlob = await ttsRes.blob();
-          const audio = new Audio(URL.createObjectURL(audioBlob));
-          audio.play();
-        }
-      } catch { /* TTS non-fatal */ }
+        const data = await fallbackRes.json();
+        fullResponse = data.response;
+        addMessage({ role: "assistant", content: data.response });
+      }
+
+      if (fullResponse) {
+        try {
+          const ttsRes = await fetch(`${apiBase}/api/voice/tts`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: fullResponse, language: "en" }),
+          });
+          if (ttsRes.ok) {
+            const audioBlob = await ttsRes.blob();
+            const audio = new Audio(URL.createObjectURL(audioBlob));
+            audio.play();
+          }
+        } catch { /* TTS non-fatal */ }
+      }
     } catch {
       addMessage({ role: "assistant", content: "Sorry, I couldn't reach the server. Please try again." });
     } finally {
@@ -202,8 +257,8 @@ export default function RithvikIntelligenceInterface() {
             <BookOpen className="w-4 h-4 text-white" />
           </div>
           <div>
-            <h1 className="text-base font-bold text-white leading-none tracking-widest">J.A.R.V.I.S</h1>
-            <p className="text-[10px] text-gray-500 leading-none mt-0.5">Rithvik Intelligence</p>
+            <h1 className="text-base font-bold text-white leading-none tracking-widest">Vaani</h1>
+            <p className="text-[10px] text-gray-500 leading-none mt-0.5">ResearchMind AI</p>
           </div>
         </div>
 
@@ -347,7 +402,7 @@ export default function RithvikIntelligenceInterface() {
                   <span className="text-3xl">{theme.emoji}</span>
                 </div>
                 <div>
-                  <p className="text-gray-300 font-medium">Hello, I am J.A.R.V.I.S.</p>
+                  <p className="text-gray-300 font-medium">Hello, I am Vaani (ResearchMind AI).</p>
                   <p className="text-gray-500 text-sm mt-1">
                     Your {theme.name} AI research mentor.
                     {mode !== "default" && <span className="ml-1" style={{ color: theme.accent }}>[ {activeModeConfig.label} active ]</span>}
