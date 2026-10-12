@@ -20,6 +20,7 @@ interface ChatState {
   enableQualityTracker: boolean;
 
   addMessage: (message: Omit<Message, "timestamp">) => void;
+  setMessages: (messages: Message[]) => void;
   appendToLastMessage: (chunk: string) => void;
   setTyping: (typing: boolean) => void;
   setLevel: (level: StudentLevel) => void;
@@ -45,6 +46,8 @@ export const useChatStore = create<ChatState>((set) => ({
         { ...message, timestamp: Date.now() },
       ],
     })),
+
+  setMessages: (messages) => set({ messages }),
 
   appendToLastMessage: (chunk) =>
     set((state) => {

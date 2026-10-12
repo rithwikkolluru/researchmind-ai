@@ -9,14 +9,6 @@
  *     utterance via a custom 3-second silence VAD timer, then sends the
  *     accumulated transcript to the AI mentor. The AI voice response plays
  *     back and recognition auto-resumes when playback ends.
- *
- * Responsibilities:
- *  - Browser SpeechRecognition (STT) — capture and transcribe mic input.
- *  - WebSocket connection to /api/voice/ws/{sessionId} — send transcripts, receive responses.
- *  - Audio playback — decode base64 MP3 and play via AudioContext.
- *  - Real-time microphone volume via Web Audio AnalyserNode (exposed as micLevel 0-100).
- *  - Duplex interruption — if user speaks while AI is playing, audio stops instantly.
- *  - Voice state machine: idle → listening → thinking → speaking → error
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -28,7 +20,7 @@ interface UseVoiceReturn {
   voiceState: VoiceState;
   isSupported: boolean;
   isCallMode: boolean;
-  micLevel: number; // Real-time microphone volume (0-100)
+  micLevel: number;
   startListening: () => void;
   stopListening: () => void;
   startCall: () => void;
@@ -36,8 +28,8 @@ interface UseVoiceReturn {
   errorMessage: string | null;
 }
 
-// How long to wait after speech stops before sending to AI (in ms)
 const SILENCE_THRESHOLD_MS = 3000;
+const MAX_RECONNECT_DELAY_MS = 30000;
 
 export function useVoice(): UseVoiceReturn {
   const { addMessage, sessionId, level, language } = useChatStore();
@@ -50,24 +42,24 @@ export function useVoice(): UseVoiceReturn {
   const recognitionRef = useRef<any>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const isUnmountedRef = useRef(false);
 
-  // Keep refs for active state tracking to avoid closures in event listeners
   const isCallModeRef = useRef(false);
   const voiceStateRef = useRef<VoiceState>("idle");
   const activeAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const pendingAudioQueueRef = useRef<string[]>([]);
 
-  // Call Mode: accumulate speech across multiple interim results
   const accumulatedTextRef = useRef<string>("");
   const lastSpeechTimeRef = useRef<number | null>(null);
   const silenceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Microphone volume analyser refs
   const micStreamRef = useRef<MediaStream | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioSourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
-  // Sync refs with states
   useEffect(() => {
     isCallModeRef.current = isCallMode;
   }, [isCallMode]);
@@ -76,22 +68,120 @@ export function useVoice(): UseVoiceReturn {
     voiceStateRef.current = voiceState;
   }, [voiceState]);
 
-  // Check browser SpeechRecognition support on mount
   useEffect(() => {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    setIsSupported(!!SpeechRecognition);
+
+    const supported = Boolean(SpeechRecognition);
+    setIsSupported(supported);
+    if (!supported) {
+      setErrorMessage("Speech recognition is unavailable in this browser. Use Chrome/Edge or type your question instead.");
+    }
   }, []);
 
-  // Connect and manage WebSocket connection
-  useEffect(() => {
-    const wsBase = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
+  const interruptAudioPlayback = useCallback(() => {
+    pendingAudioQueueRef.current = [];
+
+    if (activeAudioSourceRef.current) {
+      try {
+        activeAudioSourceRef.current.onended = null;
+        activeAudioSourceRef.current.stop();
+      } catch (error) {
+        console.warn("[Voice] Failed to stop active TTS source", error);
+      }
+      activeAudioSourceRef.current = null;
+    }
+
+    if (audioContextRef.current && audioContextRef.current.state === "running") {
+      void audioContextRef.current.suspend();
+    }
+  }, []);
+
+  const stopVolumeAnalyser = useCallback(() => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (audioSourceNodeRef.current) {
+      try {
+        audioSourceNodeRef.current.disconnect();
+      } catch (error) {
+        console.warn("[Voice] Failed to disconnect audio source", error);
+      }
+      audioSourceNodeRef.current = null;
+    }
+    analyserRef.current = null;
+    setMicLevel(0);
+  }, []);
+
+  const playBase64Audio = useCallback(async (base64Data: string): Promise<void> => {
+    try {
+      if (!audioContextRef.current || audioContextRef.current.state === "closed") {
+        audioContextRef.current = new AudioContext();
+      }
+
+      if (audioContextRef.current.state === "suspended") {
+        await audioContextRef.current.resume();
+      }
+
+      const ctx = audioContextRef.current;
+      const binary = atob(base64Data);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
+      }
+
+      const buffer = await ctx.decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      activeAudioSourceRef.current = source;
+
+      return await new Promise<void>((resolve) => {
+        source.onended = () => {
+          activeAudioSourceRef.current = null;
+          resolve();
+        };
+        source.start(0);
+      });
+    } catch (error) {
+      console.error("[Voice] Audio playback error:", error);
+    }
+  }, []);
+
+  const flushAudioQueue = useCallback(async () => {
+    while (pendingAudioQueueRef.current.length > 0) {
+      const nextChunk = pendingAudioQueueRef.current.shift();
+      if (!nextChunk) break;
+      setVoiceState("speaking");
+      await playBase64Audio(nextChunk);
+    }
+
+    setVoiceState("idle");
+    if (isCallModeRef.current) {
+      setTimeout(() => {
+        if (isCallModeRef.current) {
+          if (recognitionRef.current && voiceStateRef.current !== "thinking") {
+            try {
+              recognitionRef.current.start();
+            } catch (error) {
+              console.warn("[Voice] Could not restart recognition after TTS", error);
+            }
+          }
+        }
+      }, 150);
+    }
+  }, [playBase64Audio]);
+
+  const connectSocket = useCallback(() => {
+    const wsBase = (process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000").replace(/^http/, "ws").replace(/\/$/, "");
     const wsUrl = `${wsBase}/api/voice/ws/${sessionId}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log("[Voice] WebSocket connected");
+      reconnectAttemptsRef.current = 0;
+      setErrorMessage(null);
     };
 
     ws.onmessage = async (event) => {
@@ -100,40 +190,32 @@ export function useVoice(): UseVoiceReturn {
 
         if (msg.type === "thinking") {
           setVoiceState("thinking");
+          return;
         }
 
         if (msg.type === "response") {
           addMessage({ role: "assistant", content: msg.text });
+          return;
         }
 
         if (msg.type === "audio") {
-          setVoiceState("speaking");
-          // Stop any active recognition before speaking to prevent feedback
-          if (recognitionRef.current) {
-            try {
-              recognitionRef.current.abort();
-            } catch (e) {}
+          pendingAudioQueueRef.current.push(msg.data);
+          if (pendingAudioQueueRef.current.length === 1) {
+            void flushAudioQueue();
           }
-          await playBase64Audio(msg.data);
-
-          setVoiceState("idle");
-          // If in Call Mode, automatically resume listening after speaking completes
-          if (isCallModeRef.current) {
-            triggerNextListen();
-          }
+          return;
         }
 
         if (msg.type === "error") {
           console.warn("[Voice] Server error:", msg.message);
-          setErrorMessage(msg.message);
+          setErrorMessage(msg.message || "Voice connection error");
           setVoiceState("error");
           setTimeout(() => {
             setVoiceState("idle");
-            if (isCallModeRef.current) triggerNextListen();
           }, 3000);
         }
-      } catch (err) {
-        console.error("[Voice] Failed to parse WebSocket message:", err);
+      } catch (error) {
+        console.error("[Voice] Failed to parse WebSocket message:", error);
       }
     };
 
@@ -143,67 +225,53 @@ export function useVoice(): UseVoiceReturn {
     };
 
     ws.onclose = () => {
-      console.log("[Voice] WebSocket disconnected");
+      if (isUnmountedRef.current) return;
+      const delay = Math.min(MAX_RECONNECT_DELAY_MS, 500 * 2 ** reconnectAttemptsRef.current);
+      reconnectAttemptsRef.current += 1;
+      setErrorMessage(`Voice connection dropped. Reconnecting in ${Math.round(delay / 1000)}s...`);
+      reconnectTimerRef.current = window.setTimeout(() => {
+        connectSocket();
+      }, delay);
     };
+  }, [addMessage, flushAudioQueue, sessionId]);
 
+  useEffect(() => {
+    if (!sessionId) return;
+    connectSocket();
     return () => {
-      ws.close();
+      isUnmountedRef.current = true;
+      if (reconnectTimerRef.current) {
+        window.clearTimeout(reconnectTimerRef.current);
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
     };
-  }, [sessionId, addMessage]);
+  }, [connectSocket, sessionId]);
 
-  // Decode and play incoming audio bytes
-  const playBase64Audio = async (base64Data: string): Promise<void> => {
-    try {
-      if (!audioContextRef.current || audioContextRef.current.state === "closed") {
-        audioContextRef.current = new AudioContext();
+  const sendTranscriptToSocket = useCallback(
+    (transcript: string) => {
+      addMessage({ role: "user", content: transcript });
+
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({
+            type: "transcript",
+            text: transcript,
+            level,
+            language,
+          }),
+        );
+        setVoiceState("thinking");
+      } else {
+        setErrorMessage("Voice connection lost. Reconnecting...");
+        setVoiceState("error");
       }
-      const ctx = audioContextRef.current;
+    },
+    [addMessage, language, level],
+  );
 
-      const binary = atob(base64Data);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-      }
-
-      const audioBuffer = await ctx.decodeAudioData(bytes.buffer);
-      const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(ctx.destination);
-      activeAudioSourceRef.current = source;
-
-      return new Promise((resolve) => {
-        source.onended = () => {
-          activeAudioSourceRef.current = null;
-          resolve();
-        };
-        source.start(0);
-      });
-    } catch (err) {
-      console.error("[Voice] Audio playback error:", err);
-    }
-  };
-
-  // Helper: send accumulated transcript to AI via WebSocket
-  const sendTranscriptToSocket = useCallback((transcript: string) => {
-    addMessage({ role: "user", content: transcript });
-
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(
-        JSON.stringify({
-          type: "transcript",
-          text: transcript,
-          level: level,
-          language: language,
-        })
-      );
-      setVoiceState("thinking");
-    } else {
-      setErrorMessage("Lost connection to voice server.");
-      setVoiceState("error");
-    }
-  }, [addMessage, level, language]);
-
-  // Start the VAD silence timer — fires when user has been quiet for SILENCE_THRESHOLD_MS
   const startSilenceTimer = useCallback(() => {
     if (silenceTimerRef.current) {
       clearInterval(silenceTimerRef.current);
@@ -216,7 +284,6 @@ export function useVoice(): UseVoiceReturn {
       if (silenceDuration >= SILENCE_THRESHOLD_MS) {
         const accumulated = accumulatedTextRef.current.trim();
         if (accumulated && isCallModeRef.current && voiceStateRef.current === "listening") {
-          console.log("[Voice] Silence detected. Sending:", accumulated);
           accumulatedTextRef.current = "";
           lastSpeechTimeRef.current = null;
           if (silenceTimerRef.current) clearInterval(silenceTimerRef.current);
@@ -226,19 +293,17 @@ export function useVoice(): UseVoiceReturn {
     }, 500);
   }, [sendTranscriptToSocket]);
 
-  // Real-time microphone level animation loop
-  const startVolumeAnalyser = (stream: MediaStream) => {
+  const startVolumeAnalyser = useCallback((stream: MediaStream) => {
     try {
       if (!audioContextRef.current || audioContextRef.current.state === "closed") {
         audioContextRef.current = new AudioContext();
       }
-      const ctx = audioContextRef.current;
 
-      const analyser = ctx.createAnalyser();
+      const analyser = audioContextRef.current.createAnalyser();
       analyser.fftSize = 256;
       analyserRef.current = analyser;
 
-      const source = ctx.createMediaStreamSource(stream);
+      const source = audioContextRef.current.createMediaStreamSource(stream);
       source.connect(analyser);
       audioSourceNodeRef.current = source;
 
@@ -250,42 +315,31 @@ export function useVoice(): UseVoiceReturn {
         analyserRef.current.getByteFrequencyData(dataArray);
 
         let sum = 0;
-        for (let i = 0; i < bufferLength; i++) {
-          sum += dataArray[i];
+        for (let index = 0; index < bufferLength; index += 1) {
+          sum += dataArray[index];
         }
         const average = sum / bufferLength;
-
-        // Expose normalized volume level from 0 to 100
         const normalized = Math.min(100, Math.round((average / 128) * 100));
         setMicLevel(normalized);
-
         animationFrameRef.current = requestAnimationFrame(updateVolume);
       };
 
       updateVolume();
-    } catch (err) {
-      console.warn("[Voice] Failed to start audio analyzer:", err);
+    } catch (error) {
+      console.warn("[Voice] Failed to start audio analyser:", error);
     }
-  };
+  }, []);
 
-  const stopVolumeAnalyser = () => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-    if (audioSourceNodeRef.current) {
-      try {
-        audioSourceNodeRef.current.disconnect();
-      } catch (e) {}
-      audioSourceNodeRef.current = null;
-    }
-    analyserRef.current = null;
-    setMicLevel(0);
-  };
-
-  // Safe wrapper to start listening
   const triggerNextListen = useCallback(() => {
-    if (!isSupported) return;
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setErrorMessage("Speech recognition is unavailable in this browser. Please use text input or Chrome/Edge.");
+      setVoiceState("error");
+      return;
+    }
+
     if (voiceStateRef.current === "thinking" || (voiceStateRef.current === "listening" && recognitionRef.current)) {
       return;
     }
@@ -294,25 +348,15 @@ export function useVoice(): UseVoiceReturn {
       if (recognitionRef.current) {
         recognitionRef.current.abort();
       }
-    } catch (e) {}
-
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    const recognition = new SpeechRecognition();
-
-    // en-US has broad compatibility; fallback from regional dialects
-    recognition.lang = language === "Hindi" ? "hi-IN" : language === "Telugu" ? "te-IN" : "en-US";
-
-    if (isCallModeRef.current) {
-      recognition.continuous = true;
-      recognition.interimResults = true;
-    } else {
-      recognition.continuous = false;
-      recognition.interimResults = false;
+    } catch (error) {
+      console.warn("[Voice] Could not stop previous recognition", error);
     }
 
+    const recognition = new SpeechRecognition();
+    recognition.lang = language === "Hindi" ? "hi-IN" : language === "Telugu" ? "te-IN" : "en-US";
     recognition.maxAlternatives = 1;
+    recognition.continuous = Boolean(isCallModeRef.current);
+    recognition.interimResults = Boolean(isCallModeRef.current);
     recognitionRef.current = recognition;
 
     recognition.onstart = () => {
@@ -326,29 +370,22 @@ export function useVoice(): UseVoiceReturn {
         let interimTranscript = "";
         let finalTranscript = "";
 
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript + " ";
-          } else {
-            interimTranscript += event.results[i][0].transcript + " ";
+        for (let index = event.resultIndex; index < event.results.length; index += 1) {
+          const result = event.results[index];
+          const transcriptChunk = result[0].transcript.trim();
+          if (result.isFinal) {
+            finalTranscript += `${transcriptChunk} `;
+          } else if (transcriptChunk) {
+            interimTranscript += `${transcriptChunk} `;
           }
         }
 
-        const speech = (finalTranscript + interimTranscript).trim();
-
-        // Any captured speech resets the silence timer
+        const speech = `${finalTranscript}${interimTranscript}`.trim();
         if (speech.length > 0) {
           lastSpeechTimeRef.current = Date.now();
 
-          // DUPLEX INTERRUPTION: Stop AI playback instantly if user starts speaking
           if (voiceStateRef.current === "speaking") {
-            console.log("[Voice] User speech detected during mentor playback. Interrupting.");
-            if (activeAudioSourceRef.current) {
-              try {
-                activeAudioSourceRef.current.stop();
-              } catch (e) {}
-              activeAudioSourceRef.current = null;
-            }
+            interruptAudioPlayback();
             setVoiceState("listening");
             accumulatedTextRef.current = "";
           }
@@ -358,16 +395,15 @@ export function useVoice(): UseVoiceReturn {
           accumulatedTextRef.current = (accumulatedTextRef.current + " " + finalTranscript).trim();
         }
       } else {
-        // Push-to-talk: send transcript immediately on final result
         const transcript = event.results[0][0].transcript.trim();
-        if (!transcript) return;
-        sendTranscriptToSocket(transcript);
+        if (transcript) {
+          sendTranscriptToSocket(transcript);
+        }
       }
     };
 
     recognition.onerror = (event: any) => {
       if (event.error === "no-speech") {
-        console.warn("[Voice] SpeechRecognition status: no speech detected.");
         if (voiceStateRef.current !== "speaking") {
           setVoiceState("idle");
         }
@@ -380,28 +416,26 @@ export function useVoice(): UseVoiceReturn {
     };
 
     recognition.onend = () => {
-      if (isCallModeRef.current && (voiceStateRef.current === "listening" || voiceStateRef.current === "idle" || voiceStateRef.current === "speaking")) {
-        const nextState = voiceStateRef.current === "speaking" ? "speaking" : "idle";
-        setVoiceState(nextState);
-
+      if (isCallModeRef.current) {
+        const shouldResume = voiceStateRef.current === "idle" || voiceStateRef.current === "listening";
+        setVoiceState(shouldResume ? "idle" : voiceStateRef.current);
         setTimeout(() => {
-          if (isCallModeRef.current && (voiceStateRef.current === "idle" || voiceStateRef.current === "speaking")) {
+          if (isCallModeRef.current && !voiceStateRef.current.includes("speaking" as any)) {
             triggerNextListen();
           }
-        }, 300);
-      } else if (!isCallModeRef.current && voiceStateRef.current === "listening") {
+        }, 250);
+      } else if (voiceStateRef.current === "listening") {
         setVoiceState("idle");
       }
     };
 
     try {
       recognition.start();
-    } catch (e) {
-      console.warn("[Voice] Start error:", e);
+    } catch (error) {
+      console.warn("[Voice] Start error:", error);
     }
-  }, [isSupported, language, level, sendTranscriptToSocket]);
+  }, [interruptAudioPlayback, language, sendTranscriptToSocket]);
 
-  // Walkie-Talkie actions
   const startListening = useCallback(() => {
     if (isCallMode) return;
     setErrorMessage(null);
@@ -413,63 +447,47 @@ export function useVoice(): UseVoiceReturn {
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
-      } catch (e) {}
+      } catch (error) {
+        console.warn("[Voice] Could not stop recognition", error);
+      }
     }
     setVoiceState("idle");
   }, [isCallMode]);
 
-  // Phone Call Mode actions
   const startCall = useCallback(() => {
     setIsCallMode(true);
     setErrorMessage(null);
     setVoiceState("thinking");
-
-    // Clear accumulations
     accumulatedTextRef.current = "";
     lastSpeechTimeRef.current = null;
 
-    // Capture microphone stream for volume analyser
     navigator.mediaDevices
       .getUserMedia({ audio: true })
       .then((stream) => {
         micStreamRef.current = stream;
         startVolumeAnalyser(stream);
-        // Start VAD silence monitor
         startSilenceTimer();
-        // Begin listening after brief delay for WS to be ready
         setTimeout(() => triggerNextListen(), 200);
       })
-      .catch((err) => {
-        console.error("[Voice] Microphone capture failed:", err);
-        setErrorMessage("Microphone permission denied. Enable microphone access in browser settings.");
+      .catch((error) => {
+        console.error("[Voice] Microphone capture failed:", error);
+        setErrorMessage("Microphone permission denied. Enable microphone access in your browser settings.");
       });
 
-    // Send start_call greeting trigger to backend
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "start_call", language }));
-    } else {
-      setTimeout(() => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: "start_call", language }));
-        } else {
-          setErrorMessage("Failed to connect to mentor voice line.");
-          setVoiceState("error");
-        }
-      }, 1000);
     }
-  }, [language, startSilenceTimer, triggerNextListen]);
+  }, [language, startSilenceTimer, startVolumeAnalyser, triggerNextListen]);
 
   const endCall = useCallback(() => {
     setIsCallMode(false);
     setVoiceState("idle");
 
-    // Stop silence timer
     if (silenceTimerRef.current) {
       clearInterval(silenceTimerRef.current);
       silenceTimerRef.current = null;
     }
 
-    // Stop volume analyser and release mic stream
     stopVolumeAnalyser();
     if (micStreamRef.current) {
       micStreamRef.current.getTracks().forEach((track) => track.stop());
@@ -479,19 +497,23 @@ export function useVoice(): UseVoiceReturn {
     if (recognitionRef.current) {
       try {
         recognitionRef.current.abort();
-      } catch (e) {}
+      } catch (error) {
+        console.warn("[Voice] Failed to abort recognition on endCall", error);
+      }
     }
-    if (activeAudioSourceRef.current) {
-      try {
-        activeAudioSourceRef.current.stop();
-      } catch (e) {}
-    }
-  }, []);
 
-  // Cleanup on unmount
+    interruptAudioPlayback();
+  }, [interruptAudioPlayback, stopVolumeAnalyser]);
+
   useEffect(() => {
     return () => {
-      if (silenceTimerRef.current) clearInterval(silenceTimerRef.current);
+      isUnmountedRef.current = true;
+      if (reconnectTimerRef.current) {
+        window.clearTimeout(reconnectTimerRef.current);
+      }
+      if (silenceTimerRef.current) {
+        clearInterval(silenceTimerRef.current);
+      }
       stopVolumeAnalyser();
       if (micStreamRef.current) {
         micStreamRef.current.getTracks().forEach((track) => track.stop());
@@ -499,15 +521,17 @@ export function useVoice(): UseVoiceReturn {
       if (recognitionRef.current) {
         try {
           recognitionRef.current.abort();
-        } catch (e) {}
+        } catch (error) {
+          console.warn("[Voice] Cleanup abort error", error);
+        }
       }
-      if (activeAudioSourceRef.current) {
-        try {
-          activeAudioSourceRef.current.stop();
-        } catch (e) {}
+      interruptAudioPlayback();
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
       }
     };
-  }, []);
+  }, [interruptAudioPlayback, stopVolumeAnalyser]);
 
   return {
     voiceState,
