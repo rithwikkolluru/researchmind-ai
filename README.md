@@ -6,30 +6,30 @@ Vaani is a voice-first AI mentor built for B.Tech, M.Tech, and PhD students navi
 
 ---
 
-## ✨ Key Features
+##  Key Features
 
-### 🎙️ Core Mentor
-- 📞 **Phone Call Mode** — Hands-free, continuous voice conversation with your AI mentor (Interruptible just like a real human!)
-- 🧠 **Level-Calibrated Themes** — Tailored UI and AI behavior for **B.Tech (Cyan)**, **M.Tech (Indigo)**, and **PhD (Emerald)** levels
-- 🗣️ **Neural Text-to-Speech** — High-quality Microsoft Edge neural voices (free, no API key needed)
-- 📄 **Split-Screen Document Mode** — Upload research papers (PDF) and discuss them side-by-side with the AI
-- 🌐 **Multi-language** — English, Hindi, Telugu support
+###  Core Mentor
+- **Phone Call Mode** — Hands-free, continuous voice conversation with your AI mentor (Interruptible just like a real human!)
+-  **Level-Calibrated Themes** — Tailored UI and AI behavior for **B.Tech (Cyan)**, **M.Tech (Indigo)**, and **PhD (Emerald)** levels
+-  **Neural Text-to-Speech** — High-quality Microsoft Edge neural voices (free, no API key needed)
+- **Split-Screen Document Mode** — Upload research papers (PDF) and discuss them side-by-side with the AI
+- **Multi-language** — English, Hindi, Telugu support
 
-### 🚀 Advanced Mentor Modes
-- 🎓 **Teach Mode** — Instead of just giving answers, the AI checks your understanding step-by-step
-- 🧪 **Paper Discussion Room** — Socratic discussions where the AI asks *you* to critique the research
-- 🗺️ **Research Roadmap** — Generates step-by-step learning paths for massive goals (e.g. "I want to build AGI")
-- ⚔️ **Debate Mode** — The AI rigorously debates your ideas to sharpen your thinking
-- 📊 **Research Quality Tracker** — Evaluates your research depth every 3 messages (M.Tech / PhD)
+###  Advanced Mentor Modes
+-  **Teach Mode** — Instead of just giving answers, the AI checks your understanding step-by-step
+-  **Paper Discussion Room** — Socratic discussions where the AI asks *you* to critique the research
+-  **Research Roadmap** — Generates step-by-step learning paths for massive goals (e.g. "I want to build AGI")
+-  **Debate Mode** — The AI rigorously debates your ideas to sharpen your thinking
+- **Research Quality Tracker** — Evaluates your research depth every 3 messages (M.Tech / PhD)
 
-### ✉️ AI Communication Mentor
-- 🤖 **Smart Email Generator** — A dedicated UI to craft professional emails
-- 🎯 **Context-Aware** — Choose recipients (Professor, Recruiter, HR), purpose, tone, and outcome
-- 💡 **Why it Works** — The AI doesn't just generate the email; it explains *why* the psychological and structural choices were made
+###  AI Communication Mentor
+-  **Smart Email Generator** — A dedicated UI to craft professional emails
+-  **Context-Aware** — Choose recipients (Professor, Recruiter, HR), purpose, tone, and outcome
+-  **Why it Works** — The AI doesn't just generate the email; it explains *why* the psychological and structural choices were made
 
 ---
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 - **Frontend:** Next.js 16 (App Router), TypeScript, Tailwind CSS, Zustand, Web Speech API
 - **Backend:** FastAPI, Python 3.11, WebSockets
@@ -38,7 +38,7 @@ Vaani is a voice-first AI mentor built for B.Tech, M.Tech, and PhD students navi
 
 ---
 
-## 🚀 How to Run (New Laptop Setup)
+##  How to Run (New Laptop Setup)
 
 You have multiple options to run ResearchMind AI locally. First, clone the repository and set up your `.env` file.
 
@@ -98,7 +98,7 @@ npm run dev
 
 ---
 
-## 🏗️ Project Structure
+##  Project Structure
 
 ```
 researchmind-ai/
@@ -114,7 +114,7 @@ researchmind-ai/
 
 ---
 
-## 📞 How to Use Phone Call Mode
+##  How to Use Phone Call Mode
 
 1. Open http://localhost:3000 in **Chrome or Edge** (required for Web Speech API)
 2. Click the **Call Mentor (Phone icon)** — allow microphone access
